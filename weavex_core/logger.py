@@ -23,7 +23,7 @@ class Logger:
             "message": message,
             "execution_id": self.execution_id,
             "sequence_id": self.sequence_id,
-            "component": "workflow", # You might make this dynamic
+            "component": "weavex-api", # You might make this dynamic
             "step": step,
             "timestamp": int(time.time() * 1000)
         }
