@@ -26,6 +26,41 @@ class StdoutLogger(BaseLogger):
     def shutdown(self):
         self.flush()
 
+    def _print_std(self, severity: str, message: str, details: Dict = None):
+        """
+        Helper to print JSON-structured logs to stdout.
+        Cloud Run/Logging picks up the 'severity' field automatically.
+        """
+        payload = {
+            "severity": severity,
+            "message": message,
+            "timestamp": time.time(),
+            "component": "weavex-core",
+            "project_id": self.project_id
+        }
+        if details:
+            payload.update(details)
+
+        # Write to stderr for errors so they flag immediately in consoles
+        stream = sys.stderr if severity in ["ERROR", "CRITICAL"] else sys.stdout
+        print(json.dumps(payload, default=str), file=stream, flush=True)
+
+    def info(self, message: str, **kwargs):
+        """Log simple info messages."""
+        self._print_std("INFO", message, kwargs)
+
+    def warning(self, message: str, **kwargs):
+        """Log warning messages."""
+        self._print_std("WARNING", message, kwargs)
+
+    def error(self, message: str, **kwargs):
+        """Log error messages."""
+        self._print_std("ERROR", message, kwargs)
+
+    def debug(self, message: str, **kwargs):
+        """Log debug messages (useful for dev)."""
+        self._print_std("DEBUG", message, kwargs)
+
 # -------------------------------------------------------------------------
 # ASYNC BIGQUERY LOGGER (Production)
 # -------------------------------------------------------------------------
@@ -136,3 +171,38 @@ class AsyncBigQueryLogger(BaseLogger):
             print(f"❌ BigQuery Network Failed: {e}", file=sys.stderr)
         except Exception as e:
             print(f"❌ BigQuery Unknown Error: {e}", file=sys.stderr)
+
+    def _print_std(self, severity: str, message: str, details: Dict = None):
+        """
+        Helper to print JSON-structured logs to stdout.
+        Cloud Run/Logging picks up the 'severity' field automatically.
+        """
+        payload = {
+            "severity": severity,
+            "message": message,
+            "timestamp": time.time(),
+            "component": "weavex-core",
+            "project_id": self.project_id
+        }
+        if details:
+            payload.update(details)
+
+        # Write to stderr for errors so they flag immediately in consoles
+        stream = sys.stderr if severity in ["ERROR", "CRITICAL"] else sys.stdout
+        print(json.dumps(payload, default=str), file=stream, flush=True)
+
+    def info(self, message: str, **kwargs):
+        """Log simple info messages."""
+        self._print_std("INFO", message, kwargs)
+
+    def warning(self, message: str, **kwargs):
+        """Log warning messages."""
+        self._print_std("WARNING", message, kwargs)
+
+    def error(self, message: str, **kwargs):
+        """Log error messages."""
+        self._print_std("ERROR", message, kwargs)
+
+    def debug(self, message: str, **kwargs):
+        """Log debug messages (useful for dev)."""
+        self._print_std("DEBUG", message, kwargs)
