@@ -8,28 +8,13 @@ class ObjectStore(ABC):
     """Abstract interface for Object Storage."""
 
     @abstractmethod
-    def upload_file(self, key: str, data: Any) -> str:
-        """
-        Uploads data to the storage backend.
-
-        Args:
-            key: The path/filename in the bucket.
-            data: The content to upload. Can be dict/list (will be JSON serialized),
-                  str, or bytes.
-
-        Returns:
-            The URI of the uploaded object (e.g., gs://bucket/key).
-        """
+    def upload_json(self, key: str, data: Any) -> str:
+        """Uploads data and returns a URI string."""
         pass
 
     @abstractmethod
-    def download_file(self, uri: str) -> Any:
-        """
-        Downloads data from the given URI.
-
-        Returns:
-            The parsed JSON (if applicable) or raw string/bytes.
-        """
+    def download_json(self, uri: str) -> Any:
+        """Downloads data from a URI string."""
         pass
 
 class GCSObjectStore(ObjectStore):
@@ -44,23 +29,15 @@ class GCSObjectStore(ObjectStore):
         self.client = storage.Client()
         self.bucket = self.client.bucket(self.bucket_name)
 
-    def upload_file(self, key: str, data: Any) -> str:
+    def upload_json(self, key: str, data: Any) -> str:
         blob = self.bucket.blob(key)
-
-        content_type = "text/plain"
-
-        # Auto-serialize JSON
-        if isinstance(data, (dict, list)):
-            data = json.dumps(data)
-            content_type = "application/json"
-
         blob.upload_from_string(
-            data=data,
-            content_type=content_type
+            data=json.dumps(data),
+            content_type='application/json'
         )
         return f"gs://{self.bucket_name}/{key}"
 
-    def download_file(self, uri: str) -> Any:
+    def download_json(self, uri: str) -> Any:
         if not uri.startswith("gs://"):
             raise ValueError(f"Invalid GCS URI: {uri}. Must start with gs://")
 
@@ -78,12 +55,7 @@ class GCSObjectStore(ObjectStore):
             blob = self.client.bucket(bucket_name).blob(blob_name)
 
         data_str = blob.download_as_text()
-
-        # Auto-detect JSON
-        try:
-            return json.loads(data_str)
-        except json.JSONDecodeError:
-            return data_str
+        return json.loads(data_str)
 
 def get_object_store() -> ObjectStore:
     """Factory to get the configured ObjectStore implementation."""
@@ -91,5 +63,6 @@ def get_object_store() -> ObjectStore:
 
     if backend == "gcs":
         return GCSObjectStore()
+    # Add 's3' or 'azure' here in the future
     else:
         raise ValueError(f"Unsupported STORAGE_BACKEND: {backend}")
