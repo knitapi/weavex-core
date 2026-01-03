@@ -77,9 +77,9 @@ class FirestoreStateStore(StateStore):
 
 def get_sync_state() -> StateStore:
     """Factory to get the configured StateStore implementation."""
-    backend = os.environ.get("STATE_BACKEND", "firestore").lower()
+    backend = os.environ.get("STATE_STORE_TYPE", "firestore").lower()
 
     if backend == "firestore":
         return FirestoreStateStore()
     else:
-        raise ValueError(f"Unsupported STATE_BACKEND: {backend}")
+        raise ValueError(f"Unsupported STATE_STORE_TYPE: {backend}")

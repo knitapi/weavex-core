@@ -59,10 +59,10 @@ class GCSObjectStore(ObjectStore):
 
 def get_object_store() -> ObjectStore:
     """Factory to get the configured ObjectStore implementation."""
-    backend = os.environ.get("STORAGE_BACKEND", "gcs").lower()
+    backend = os.environ.get("OBJECT_STORAGE_TYPE", "gcs").lower()
 
     if backend == "gcs":
         return GCSObjectStore()
     # Add 's3' or 'azure' here in the future
     else:
-        raise ValueError(f"Unsupported STORAGE_BACKEND: {backend}")
+        raise ValueError(f"Unsupported OBJECT_STORAGE_TYPE: {backend}")
