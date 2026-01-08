@@ -1,3 +1,4 @@
+import os
 from .sdk import WeavexServicesLogger
 
 # This allows you to do:
