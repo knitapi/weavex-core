@@ -3,7 +3,8 @@ import json
 import time
 import queue
 import threading
-from typing import List
+import os  # Added missing os import
+from typing import List, Dict  # Added Dict to typing imports
 
 # Google Cloud Imports
 from google.cloud import bigquery
