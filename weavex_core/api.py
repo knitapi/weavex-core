@@ -1,4 +1,3 @@
-import os
 import json
 import requests
 from dataclasses import dataclass
@@ -11,25 +10,42 @@ class VendorResponse:
     headers: Dict[str, str]
 
 def make_passthrough_call(
+        context: dict,
         integration_id: str,
         method: str,
         path: str,
         params: Optional[dict] = None,
         body: Optional[dict] = None
 ) -> VendorResponse:
+    """
+    Makes an authenticated call via the Knit API Proxy.
+    Validates that the context contains required auth and tracing details.
+    """
 
-    api_key = os.environ.get("KNIT_API_KEY")
-    base_url = "https://api.getknit.dev/v1.0/passthrough"
+    # 1. Strict Validation of Context
+    if not isinstance(context, dict):
+        raise ValueError("The 'context' parameter must be a dictionary.")
+
+    api_key = context.get("knit_api_key")
+    execution_id = context.get("execution_id")
 
     if not api_key:
-        raise ValueError("Environment variable 'KNIT_API_KEY' is required.")
+        raise ValueError("Missing 'knit_api_key' in context. Authentication is required.")
+
+    if not execution_id:
+        raise ValueError("Missing 'execution_id' in context. Tracing is required.")
+
+    # 2. Setup Request
+    base_url = "https://api.getknit.dev/v1.0/passthrough"
 
     headers = {
         "Authorization": f"Bearer {api_key}",
         "X-Knit-Integration-Id": integration_id,
+        "X-Knit-Execution-Id": execution_id, # Propagation for tracing
         "Content-Type": "application/json"
     }
 
+    # TODO: send 'context' as well
     payload = {
         "method": method.upper(),
         "path": path,
@@ -37,40 +53,30 @@ def make_passthrough_call(
         "body": json.dumps(body) if body else None
     }
 
-    # 1. Network Call
-    # We do NOT raise_for_status() here because we want to return 4xx/5xx to the caller
-    # so they can decide logic (e.g., 404 might be valid "Not Found").
+    # 3. Network Call
     try:
         resp = requests.post(base_url, json=payload, headers=headers)
     except Exception as e:
         raise RuntimeError(f"Proxy Network Connection Error: {e}")
 
-    # 2. Extract Status (Directly from Proxy Response)
+    # 4. Extract Status & Unwrap Body
     final_status = resp.status_code
-
-    # 3. Unwrap Body
     final_body = None
     final_headers = {}
 
     try:
         if resp.content:
             proxy_data = resp.json()
-            # If the proxy itself failed (e.g. auth error), success might be False
-            # But usually, if status_code reflects vendor, we just want the body.
-
             response_wrapper = proxy_data.get("data", {}).get("response", {})
 
-            # Extract Headers
             final_headers = response_wrapper.get("headers", {})
-
-            # Extract & Parse Body
             raw_body_str = response_wrapper.get("body", "{}")
+
             try:
                 final_body = json.loads(raw_body_str)
             except (json.JSONDecodeError, TypeError):
                 final_body = raw_body_str
     except Exception:
-        # Fallback for fatal proxy errors (e.g. 502 Bad Gateway HTML)
         final_body = resp.text
 
     return VendorResponse(status_code=final_status, body=final_body, headers=final_headers)
