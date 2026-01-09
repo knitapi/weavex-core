@@ -25,7 +25,7 @@ class WeavexServicesLogger:
             self.billing_logger = StdoutLogger(project_id)
 
     def log_api_traffic(self,
-                        request_id: str,
+                        execution_id: str,
                         log_type: str,
                         account_id: str,
                         method: str,
@@ -39,7 +39,7 @@ class WeavexServicesLogger:
         Logs ingress (Gateway) or egress (Vendor) API traffic.
         """
         payload = {
-            "request_id": request_id,
+            "execution_id": execution_id,
             "log_type": log_type,  # "GATEWAY_ENTRY", "VENDOR_CALL"
             "account_id": account_id,
             "method": method,
