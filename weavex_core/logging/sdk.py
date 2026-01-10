@@ -65,7 +65,8 @@ class WeavexServicesLogger:
                        error_message: Optional[str] = None,
                        vendor_url: Optional[str] = None,
                        vendor_method: Optional[str] = None,
-                       vendor_req_id: Optional[str] = None):
+                       vendor_req_id: Optional[str] = None,
+                       metadata: Optional[Dict[str, Any]] = None):
         """
         Logs internal sync logic (Record Status) or external calls (Vendor HTTP).
         """
@@ -83,6 +84,7 @@ class WeavexServicesLogger:
             "vendor_url": vendor_url,
             "vendor_method": vendor_method,
             "vendor_request_id": vendor_req_id,
+            "sync_data": metadata or {}
         }
         self.sync_logger.log(payload, blocking=False)
 
