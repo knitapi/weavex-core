@@ -1,7 +1,7 @@
 # weavex_core/__init__.py
 
 # 1. Expose Logging (Existing)
-from .logging import get_logger
+from .logging_utils import get_logger
 
 # 2. Expose Storage Factory
 from .storage import get_object_store

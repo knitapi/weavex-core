@@ -34,8 +34,11 @@ class FirestoreStateStore(StateStore):
     """Google Cloud Firestore implementation."""
 
     def __init__(self):
-        # Initialize client (picks up credentials from env GOOGLE_APPLICATION_CREDENTIALS)
-        self.db = firestore.Client()
+        # Graceful default: Use "weavex-store" database
+        db_name = os.environ.get("FIRESTORE_DATABASE", "weavex-state")
+
+        # Initialize client with the specific database name
+        self.db = firestore.Client(database=db_name)
 
     def _get_state_doc(self, project_id, sync_id, step_id):
         # Structure: projects/{pid}/syncs/{sid}/steps/{stepid}
@@ -76,7 +79,8 @@ class FirestoreStateStore(StateStore):
         self._get_hash_doc(project_id, record_id).delete()
 
 def get_sync_state() -> StateStore:
-    """Factory to get the configured StateStore implementation."""
+    """Factory to get the configured StateStore implementation. Defaults to Firestore."""
+    # Graceful default: defaults to 'firestore' if STATE_STORE_TYPE is not set
     backend = os.environ.get("STATE_STORE_TYPE", "firestore").lower()
 
     if backend == "firestore":
