@@ -52,7 +52,7 @@ class WeavexServicesLogger:
             "response_payload": resp_payload,
             "vendor_name": vendor_name,
             "api_data": metadata or {},
-            "knit_context": context or {}
+            "context": context or {}
         }
         self.api_logger.log(payload, blocking=False)
 
@@ -90,7 +90,7 @@ class WeavexServicesLogger:
             "vendor_method": vendor_method,
             "vendor_request_id": vendor_req_id,
             "sync_data": metadata or {},
-            "knit_context": context or {}
+            "context": context or {}
         }
         self.sync_logger.log(payload, blocking=False)
 
@@ -116,7 +116,7 @@ class WeavexServicesLogger:
             "duration_ms": duration_ms,
             "status": status,
             "bill_data": metadata or {},
-            "knit_context": context or {}
+            "context": context or {}
         }
         self.billing_logger.log(payload, blocking=True)
 
