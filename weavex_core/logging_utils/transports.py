@@ -7,8 +7,8 @@ import os  # Added missing os import
 from typing import List, Dict  # Added Dict to typing imports
 
 # Google Cloud Imports
-from google.cloud import bigquery
 from google.api_core.exceptions import GoogleAPICallError
+from google.cloud import pubsub_v1
 
 from .base import BaseLogger
 
@@ -65,130 +65,62 @@ class StdoutLogger(BaseLogger):
 # -------------------------------------------------------------------------
 # ASYNC BIGQUERY LOGGER (Production)
 # -------------------------------------------------------------------------
-class AsyncBigQueryLogger(BaseLogger):
-    def __init__(self, table_path=None, project_id=None):
+class PubSubLogger(BaseLogger):
+    def __init__(self, topic_id: str, project_id: str = None):
         super().__init__(project_id)
+        self.publisher = pubsub_v1.PublisherClient()
+        self.topic_path = self.publisher.topic_path(self.project_id, topic_id)
 
-        self.table_path = table_path or os.getenv("WEAVEX_BQ_TABLE")
-        if not self.table_path:
-            raise ValueError("Table path is required for BigQuery Logger")
+    def log(self, payload: dict, blocking: bool = True):
+        # 1. Identify the table for the filter (API, SYNC, or BILLING)
+        log_table = payload.get("log_table", "UNKNOWN")
 
-        # Initialize Client
-        # Note: We use the standard Client for insert_rows_json as it handles
-        # dictionary->JSON conversion natively.
-        self.client = bigquery.Client(project=self.project_id)
-
-        # Async Buffer
-        self.queue = queue.Queue(maxsize=10000)
-        self.batch_size = 100
-        self.linger_ms = 0.5  # 500ms max wait before writing a partial batch
-        self.running = True
-
-        # Start Background Thread
-        self.worker = threading.Thread(target=self._worker_loop, daemon=True)
-        self.worker.start()
-
-    def log(self, payload: dict, blocking: bool = False):
+        # 2. Standard enrichment
         data = self._enrich(payload)
+        message_bytes = json.dumps(data, default=str).encode("utf-8")
 
-        # Case A: High Priority (Billing/Audit) - Write Immediately & Wait
+        # 3. Publish with 'log_table' as a metadata attribute
+        future = self.publisher.publish(
+            self.topic_path,
+            message_bytes,
+            log_table=log_table  # <--- Crucial for filtering
+        )
+
         if blocking:
-            self._write_batch_sync([data])
-            return
-
-        # Case B: Standard Logs - buffer them
-        try:
-            self.queue.put(data, block=False)
-        except queue.Full:
-            # Fallback to stderr if queue is full to avoid crashing the app
-            print(f"⚠️ Log Buffer Full! Dropping log: {data.get('log_type')}", file=sys.stderr)
+            future.result()
 
     def flush(self):
-        """Injects a sentinel to force the worker to drain the queue."""
-        if not self.running: return
-        flush_event = threading.Event()
-        self.queue.put(("__FLUSH__", flush_event))
-        flush_event.wait(timeout=10.0)
+        pass # PubSub client handles its own batching/flushing
 
     def shutdown(self):
-        if not self.running: return
-        self.running = False
+        pass
 
-        # Drain remaining items
-        final_batch = []
-        while not self.queue.empty():
-            try:
-                item = self.queue.get_nowait()
-                if isinstance(item, dict): final_batch.append(item)
-            except queue.Empty:
-                break
-
-        if final_batch:
-            print(f"⚠️ Flushing {len(final_batch)} logs before exit...", file=sys.stderr)
-            self._write_batch_sync(final_batch)
-
-    def _worker_loop(self):
-        batch = []
-        last_flush = time.time()
-
-        while self.running:
-            try:
-                # Wait for items
-                item = self.queue.get(timeout=self.linger_ms)
-
-                # Check for Flush Sentinel
-                if isinstance(item, tuple) and item[0] == "__FLUSH__":
-                    if batch: self._write_batch_sync(batch)
-                    batch = []
-                    last_flush = time.time()
-                    item[1].set() # Signal main thread
-                    continue
-
-                batch.append(item)
-            except queue.Empty:
-                pass
-
-            # Auto-Flush Logic (Batch Size or Time limit)
-            time_since = time.time() - last_flush
-            if len(batch) >= self.batch_size or (batch and time_since >= self.linger_ms):
-                self._write_batch_sync(batch)
-                batch = []
-                last_flush = time.time()
-
-    def _write_batch_sync(self, batch: List[dict]):
-        """
-        Writes a batch of logs to BigQuery using streaming inserts.
-        """
-        if not batch: return
-
-        try:
-            # table_path format: "project.dataset.table"
-            errors = self.client.insert_rows_json(self.table_path, batch)
-
-            if errors:
-                print(f"❌ BigQuery Insert Errors in {self.table_path}: {errors}", file=sys.stderr)
-                # In a real system, you might write these to a dead-letter file
-        except GoogleAPICallError as e:
-            print(f"❌ BigQuery Network Failed: {e}", file=sys.stderr)
-        except Exception as e:
-            print(f"❌ BigQuery Unknown Error: {e}", file=sys.stderr)
-
+    # Updated transports.py snippet for PubSubLogger
     def _print_std(self, severity: str, message: str, details: Dict = None):
         """
-        Helper to print JSON-structured logs to stdout.
-        Cloud Run/Logging picks up the 'severity' field automatically.
+        Captures stdout logs, enriches them with mandatory context/sync_id,
+        and routes them to the 'SERVICE' BigQuery table via Pub/Sub.
         """
+        details = details or {}
+
+        # 1. Extract specifically required fields
+        sync_id = details.pop("sync_id", None)
+        context = details.pop("context", {}) # Mandatory: default to empty dict if missing
+
+        # 2. Build the 'SERVICE' table payload
         payload = {
+            "log_table": "SERVICE",
             "severity": severity,
             "message": message,
-            "timestamp": time.time(),
-            "component": "weavex-core",
-            "project_id": self.project_id
+            "sync_id": sync_id,
+            "context": context,
+            "details": details  # Remaining kwargs
         }
-        if details:
-            payload.update(details)
 
-        # Write to stderr for errors so they flag immediately in consoles
+        # 3. Ingest via Pub/Sub
+        self.log(payload, blocking=False)
+
+        # 4. Local console print (enriched with event_id/timestamp from self.log)
         stream = sys.stderr if severity in ["ERROR", "CRITICAL"] else sys.stdout
         print(json.dumps(payload, default=str), file=stream, flush=True)
 

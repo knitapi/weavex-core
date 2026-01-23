@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 import os
 
-from .transports import AsyncBigQueryLogger, StdoutLogger
+from .transports import PubSubLogger, StdoutLogger
 
 class WeavexServicesLogger:
     """
@@ -10,24 +10,23 @@ class WeavexServicesLogger:
     """
 
     def __init__(self, project_id: str, logger_type: str = "STDOUT"):
-        self.project_id = project_id
+        self.project_id = project_id or os.getenv("WEAVEX_PROJECT_ID")
         self.logger_type = logger_type
 
         # Initialize Transport
-        # In DEV/LOCAL, we often just want to see logs in the terminal
-        if self.logger_type == "BQ":
-            self.api_logger = AsyncBigQueryLogger(table_path="logs.api_gateway_logs", project_id=project_id)
-            self.sync_logger = AsyncBigQueryLogger(table_path="logs.sync_execution_logs", project_id=project_id)
-            self.billing_logger = AsyncBigQueryLogger(table_path="logs.billing_ledger", project_id=project_id)
+        if self.logger_type == "PUB_SUB":
+            # Using a single ingestion topic for all log types.
+            # The consumer will route them to the right table based on the payload.
+            topic_id = os.getenv("WEAVEX_LOG_TOPIC", "weavex-logs")
+
+            # We use one logger instance; it handles everything via the same topic
+            self.logger = PubSubLogger(topic_id=topic_id, project_id=self.project_id)
         else:
-            self.api_logger = StdoutLogger(project_id)
-            self.sync_logger = StdoutLogger(project_id)
-            self.billing_logger = StdoutLogger(project_id)
+            # Fallback to standard output for local development
+            self.logger = StdoutLogger(self.project_id)
 
     def log_api_traffic(self,
-                        execution_id: str,
                         log_type: str,
-                        account_id: str,
                         method: str,
                         url: str,
                         status_code: int,
@@ -41,9 +40,8 @@ class WeavexServicesLogger:
         Logs ingress (Gateway) or egress (Vendor) API traffic.
         """
         payload = {
-            "execution_id": execution_id,
+            "log_table": "API",
             "log_type": log_type,  # "GATEWAY_ENTRY", "VENDOR_CALL"
-            "account_id": account_id,
             "method": method,
             "url": url,
             "status_code": status_code,
@@ -54,11 +52,10 @@ class WeavexServicesLogger:
             "api_data": metadata or {},
             "context": context or {}
         }
-        self.api_logger.log(payload, blocking=False)
+        self.logger.log(payload, blocking=False)
 
     def log_sync_event(self,
                        sync_id: str,
-                       account_id: str,
                        log_type: str,
                        duration_ms: int,
                        record_id: Optional[str] = None,
@@ -76,8 +73,8 @@ class WeavexServicesLogger:
         Logs internal sync logic (Record Status) or external calls (Vendor HTTP).
         """
         payload = {
+            "log_table": "SYNC",
             "sync_id": sync_id,
-            "account_id": account_id,
             "log_type": log_type, # "RECORD_STATUS", "VENDOR_HTTP"
             "duration_ms": duration_ms,
             "record_id": record_id,
@@ -92,11 +89,9 @@ class WeavexServicesLogger:
             "sync_data": metadata or {},
             "context": context or {}
         }
-        self.sync_logger.log(payload, blocking=False)
+        self.logger.log(payload, blocking=False)
 
     def log_billable_event(self,
-                           account_id: str,
-                           project_id: str,
                            source: str,
                            resource_id: str,
                            quantity: int,
@@ -108,8 +103,7 @@ class WeavexServicesLogger:
         CRITICAL: Logs billable events. Uses blocking=True to ensure durability.
         """
         payload = {
-            "account_id": account_id,
-            "project_id": project_id,
+            "log_table": "BILLING",
             "source": source,        # "API_TRIGGER", "SYNC_WORKFLOW"
             "resource_id": resource_id,
             "quantity": quantity,
@@ -118,9 +112,7 @@ class WeavexServicesLogger:
             "bill_data": metadata or {},
             "context": context or {}
         }
-        self.billing_logger.log(payload, blocking=True)
+        self.logger.log(payload, blocking=True)
 
     def shutdown(self):
-        self.api_logger.shutdown()
-        self.sync_logger.shutdown()
-        self.billing_logger.shutdown()
+        self.logger.shutdown()
