@@ -1,5 +1,6 @@
+import time
 from typing import Optional, Dict, Any
-import os
+import os, json
 
 from .transports import PubSubLogger, StdoutLogger
 
@@ -9,18 +10,18 @@ class WeavexServicesLogger:
     Routes logs to the correct BigQuery tables based on the method called.
     """
 
-    def __init__(self, project_id: str, logger_type: str = "STDOUT"):
+    def __init__(self, project_id: str = None, logger_type: str = "STDOUT", gcp_project_id: str = None):
         self.project_id = project_id or os.getenv("WEAVEX_PROJECT_ID")
+        self.gcp_project_id = gcp_project_id or os.getenv("GCP_PROJECT_ID")
         self.logger_type = logger_type
 
-        # Initialize Transport
         if self.logger_type == "PUB_SUB":
-            # Using a single ingestion topic for all log types.
-            # The consumer will route them to the right table based on the payload.
             topic_id = os.getenv("WEAVEX_LOG_TOPIC", "weavex-logs")
-
-            # We use one logger instance; it handles everything via the same topic
-            self.logger = PubSubLogger(topic_id=topic_id, project_id=self.project_id)
+            self.logger = PubSubLogger(
+                topic_id=topic_id,
+                project_id=self.project_id,
+                gcp_project_id=self.gcp_project_id
+            )
         else:
             # Fallback to standard output for local development
             self.logger = StdoutLogger(self.project_id)
@@ -41,18 +42,19 @@ class WeavexServicesLogger:
         """
         payload = {
             "log_table": "API",
-            "log_type": log_type,  # "GATEWAY_ENTRY", "VENDOR_CALL"
+            "log_type": log_type,
             "method": method,
             "url": url,
-            "status_code": status_code,
-            "duration_ms": duration_ms,
-            "request_payload": req_payload,
-            "response_payload": resp_payload,
+            "status_code": int(status_code),
+            "duration_ms": int(duration_ms),
+            # Stringify JSON fields for BQ ingestion compatibility
+            "request_payload": json.dumps(req_payload or {}),
+            "response_payload": json.dumps(resp_payload or {}),
             "vendor_name": vendor_name,
-            "api_data": metadata or {},
-            "context": context or {}
+            "api_data": json.dumps(metadata or {}),
+            "context": json.dumps(context or {})
         }
-        self.logger.log(payload, blocking=False)
+        self.logger.log(payload, blocking=True)
 
     def log_sync_event(self,
                        sync_id: str,
@@ -75,8 +77,8 @@ class WeavexServicesLogger:
         payload = {
             "log_table": "SYNC",
             "sync_id": sync_id,
-            "log_type": log_type, # "RECORD_STATUS", "VENDOR_HTTP"
-            "duration_ms": duration_ms,
+            "log_type": log_type,
+            "duration_ms": int(duration_ms),
             "record_id": record_id,
             "external_id": external_id,
             "entity_type": entity_type,
@@ -86,10 +88,11 @@ class WeavexServicesLogger:
             "vendor_url": vendor_url,
             "vendor_method": vendor_method,
             "vendor_request_id": vendor_req_id,
-            "sync_data": metadata or {},
-            "context": context or {}
+            # Stringify JSON fields
+            "sync_data": json.dumps(metadata or {}),
+            "context": json.dumps(context or {})
         }
-        self.logger.log(payload, blocking=False)
+        self.logger.log(payload, blocking=True)
 
     def log_billable_event(self,
                            source: str,
@@ -104,15 +107,33 @@ class WeavexServicesLogger:
         """
         payload = {
             "log_table": "BILLING",
-            "source": source,        # "API_TRIGGER", "SYNC_WORKFLOW"
+            "source": source,
             "resource_id": resource_id,
-            "quantity": quantity,
-            "duration_ms": duration_ms,
+            "quantity": int(quantity),
+            "duration_ms": int(duration_ms),
             "status": status,
-            "bill_data": metadata or {},
-            "context": context or {}
+            # Stringify JSON fields
+            "bill_data": json.dumps(metadata or {}),
+            "context": json.dumps(context or {})
         }
         self.logger.log(payload, blocking=True)
 
+    def info(self, message: str, **kwargs):
+        """Logs info message to 'service_logs' table."""
+        self.logger.info(message, **kwargs)
+
+    def warning(self, message: str, **kwargs):
+        """Logs warning message to 'service_logs' table."""
+        self.logger.warning(message, **kwargs)
+
+    def error(self, message: str, **kwargs):
+        """Logs error message to 'service_logs' table."""
+        self.logger.error(message, **kwargs)
+
+    def debug(self, message: str, **kwargs):
+        """Logs debug message to 'service_logs' table."""
+        self.logger.debug(message, **kwargs)
+
     def shutdown(self):
+        time.sleep(5)
         self.logger.shutdown()

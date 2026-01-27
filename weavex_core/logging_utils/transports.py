@@ -66,18 +66,25 @@ class StdoutLogger(BaseLogger):
 # ASYNC BIGQUERY LOGGER (Production)
 # -------------------------------------------------------------------------
 class PubSubLogger(BaseLogger):
-    def __init__(self, topic_id: str, project_id: str = None):
-        super().__init__(project_id)
+    def __init__(self, topic_id: str, project_id: str = None, gcp_project_id: str = None):
+        super().__init__(project_id=project_id, gcp_project_id=gcp_project_id)
         self.publisher = pubsub_v1.PublisherClient()
-        self.topic_path = self.publisher.topic_path(self.project_id, topic_id)
+        # USE gcp_project_id for the resource path, NOT internal project_id
+        self.topic_path = self.publisher.topic_path(self.gcp_project_id, topic_id)
 
     def log(self, payload: dict, blocking: bool = True):
         # 1. Identify the table for the filter (API, SYNC, or BILLING)
         log_table = payload.get("log_table", "UNKNOWN")
 
+        if log_table == "UNKNOWN":
+            # Wrap the original payload in a single key
+            # This matches a BigQuery schema with a single 'raw_payload' JSON/STRING column
+            payload = {"raw_payload": json.dumps(payload or {})}
+
         # 2. Standard enrichment
         data = self._enrich(payload)
         message_bytes = json.dumps(data, default=str).encode("utf-8")
+        print(message_bytes, flush=True)
 
         # 3. Publish with 'log_table' as a metadata attribute
         future = self.publisher.publish(
@@ -113,8 +120,8 @@ class PubSubLogger(BaseLogger):
             "severity": severity,
             "message": message,
             "sync_id": sync_id,
-            "context": context,
-            "details": details  # Remaining kwargs
+            "context": json.dumps(context),
+            "details": json.dumps(details),  # Remaining kwargs
         }
 
         # 3. Ingest via Pub/Sub
