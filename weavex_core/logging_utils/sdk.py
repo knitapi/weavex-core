@@ -15,7 +15,7 @@ class WeavexServicesLogger:
         self.gcp_project_id = gcp_project_id or os.getenv("GCP_PROJECT_ID")
         self.logger_type = logger_type
 
-        if self.logger_type == "PUB_SUB":
+        if self.logger_type == "PUBSUB":
             topic_id = os.getenv("WEAVEX_LOG_TOPIC", "weavex-logs")
             self.logger = PubSubLogger(
                 topic_id=topic_id,
