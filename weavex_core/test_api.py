@@ -19,7 +19,7 @@ def run_test_call():
             integration_id="mg_BMsnPnZR8EIVkls7YBjs1E",
             method="POST",
             path="/v3/objects/contacts/search",
-            params={},
+            headers={"Content-Type": "application/json"},
             body={
                 "filterGroups": [{
                     "filters": [{
@@ -31,6 +31,7 @@ def run_test_call():
                 "properties": ["firstname", "lastname", "mobilephone", "email"],
                 "limit": 100
             }
+
         )
 
         # response = make_passthrough_call(
@@ -38,7 +39,7 @@ def run_test_call():
         #     integration_id="mg_gMe9WA5DbWROfHMonG2zMs",
         #     method="POST",
         #     path="/reports/custom?format=JSON&onlyCurrent=true",
-        #     params={},
+        #     headers={"Content-Type": "application/json"},
         #     body={
         #         "title": "This is my report",
         #         "fields": [
@@ -50,15 +51,31 @@ def run_test_call():
         #     }
         # )
 
+        api_path = f"employeedependents?employeeid=4"
+
+        method = "GET"
+        headers = {
+            "Accept": "application/json"
+        }
+
+        response = make_passthrough_call(
+            context=MY_CONTEXT,
+            integration_id="mg_gMe9WA5DbWROfHMonG2zMs",
+            method=method,
+            path=api_path,
+            headers=headers,
+            body={}
+        )
+
         # response = make_passthrough_call(
         #     context=MY_CONTEXT,
         #     integration_id="mg_gMe9WA5DbWROfHMonG2zMs",
-        #     method="POST",
-        #     path="datasets/employee",
-        #     params={},
-        #     body={
-        #         "fields": ["firstName", "lastName", "mobilePhone", "workEmail"]
-        #     }
+        #     method="GET",
+        #     path="employeedependents?employeeid=4",
+        #     headers= {
+        #         "Accept": "application/json"
+        #     },
+        #     body= {}
         # )
 
         # 3. Output the results

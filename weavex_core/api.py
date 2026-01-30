@@ -15,7 +15,6 @@ def make_passthrough_call(
         integration_id: str,
         method: str,
         path: str,
-        params: Optional[dict] = None,
         body: Optional[dict] = None,
         content_type: str = None,
         headers: Optional[dict] = None
@@ -47,7 +46,7 @@ def make_passthrough_call(
     else:
         base_url = "https://api.getknit.dev/v1.0/passthrough"
 
-    headers = {
+    final_headers = {
         "Authorization": f"Bearer {api_key}",
         "X-Knit-Integration-Id": integration_id,
         "X-Knit-Execution-Id": execution_id, # Propagation for tracing
@@ -58,15 +57,14 @@ def make_passthrough_call(
     payload = {
         "method": method.upper(),
         "path": path,
-        "params": params,
         "body": json.dumps(body) if body else None,
         "contentType": content_type if content_type else "application/json",
-        "headers": headers if headers else {"accept": "application/json"}
+        "headers": headers if headers else {"Accept": "application/json"}
     }
 
     # 3. Network Call
     try:
-        resp = requests.post(base_url, json=payload, headers=headers)
+        resp = requests.post(base_url, json=payload, headers=final_headers)
     except Exception as e:
         raise RuntimeError(f"Proxy Network Connection Error: {e}")
 
