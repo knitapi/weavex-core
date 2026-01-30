@@ -61,7 +61,7 @@ def make_passthrough_call(
         "params": params,
         "body": json.dumps(body) if body else None,
         "contentType": content_type if content_type else "application/json",
-        "headers": headers if headers else None
+        "headers": headers if headers else {"accept": "application/json"}
     }
 
     # 3. Network Call

@@ -33,22 +33,22 @@ def run_test_call():
             }
         )
 
-        response = make_passthrough_call(
-            context=MY_CONTEXT,
-            integration_id="mg_gMe9WA5DbWROfHMonG2zMs",
-            method="POST",
-            path="/reports/custom?format=JSON&onlyCurrent=true",
-            params={},
-            body={
-                "title": "This is my report",
-                "fields": [
-                    "firstName",
-                    "lastName",
-                    "workEmail",
-                    "mobilePhone"
-                ]
-            }
-        )
+        # response = make_passthrough_call(
+        #     context=MY_CONTEXT,
+        #     integration_id="mg_gMe9WA5DbWROfHMonG2zMs",
+        #     method="POST",
+        #     path="/reports/custom?format=JSON&onlyCurrent=true",
+        #     params={},
+        #     body={
+        #         "title": "This is my report",
+        #         "fields": [
+        #             "firstName",
+        #             "lastName",
+        #             "workEmail",
+        #             "mobilePhone"
+        #         ]
+        #     }
+        # )
 
         # response = make_passthrough_call(
         #     context=MY_CONTEXT,
