@@ -5,6 +5,7 @@ from typing import Optional, Any, Dict
 
 @dataclass
 class VendorResponse:
+    actual_resp: str
     status_code: int
     body: Any  # Automatically parsed JSON if possible, else raw string
     headers: Dict[str, str]
@@ -15,7 +16,9 @@ def make_passthrough_call(
         method: str,
         path: str,
         params: Optional[dict] = None,
-        body: Optional[dict] = None
+        body: Optional[dict] = None,
+        content_type: str = None,
+        headers: Optional[dict] = None
 ) -> VendorResponse:
     """
     Makes an authenticated call via the Knit API Proxy.
@@ -56,7 +59,9 @@ def make_passthrough_call(
         "method": method.upper(),
         "path": path,
         "params": params,
-        "body": json.dumps(body) if body else None
+        "body": json.dumps(body) if body else None,
+        "contentType": content_type if content_type else "application/json",
+        "headers": headers if headers else None
     }
 
     # 3. Network Call
@@ -85,4 +90,4 @@ def make_passthrough_call(
     except Exception:
         final_body = resp.text
 
-    return VendorResponse(status_code=final_status, body=final_body, headers=final_headers)
+    return VendorResponse(actual_resp=resp.content, status_code=final_status, body=final_body, headers=final_headers)
