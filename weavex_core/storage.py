@@ -17,6 +17,11 @@ class ObjectStore(ABC):
         """Downloads data from a URI string."""
         pass
 
+    @abstractmethod
+    def delete_json(self, project_id: str, sync_id: str, uri: str) -> bool:
+        """Deletes a JSON object from storage. Returns True if successful."""
+        pass
+
 class GCSObjectStore(ObjectStore):
     """Google Cloud Storage implementation."""
 
@@ -61,6 +66,30 @@ class GCSObjectStore(ObjectStore):
         blob = target_bucket.blob(blob_path)
 
         return json.loads(blob.download_as_text())
+
+    def delete_json(self, project_id: str, sync_id: str, uri: str) -> bool:
+        if not uri.startswith("gs://"):
+            raise ValueError(f"Invalid GCS URI: {uri}. Must start with gs://")
+
+        # Extract bucket and path
+        path_parts = uri.replace("gs://", "").split("/", 1)
+        bucket_name, blob_path = path_parts[0], path_parts[1]
+
+        # Security check: Ensure the path belongs to this project/sync
+        expected_prefix = f"{project_id}/{sync_id}/"
+        if not blob_path.startswith(expected_prefix):
+            raise PermissionError(
+                f"Unauthorized deletion: {uri} does not belong to Project: {project_id}, Sync: {sync_id}"
+            )
+
+        # Execute deletion
+        target_bucket = self.bucket if bucket_name == self.bucket_name else self.client.bucket(bucket_name)
+        blob = target_bucket.blob(blob_path)
+
+        if blob.exists():
+            blob.delete()
+            return True
+        return False
 
 def get_object_store() -> ObjectStore:
     """Factory to get the configured ObjectStore implementation. Defaults to GCS."""

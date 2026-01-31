@@ -1,7 +1,7 @@
 import hashlib
 import json
-from storage import get_object_store
-from state import get_sync_state
+from weavex_core.storage import get_object_store
+from weavex_core.state import get_sync_state
 
 def main():
     print("--- Running Weavex SDK Integration Test ---")
@@ -37,6 +37,35 @@ def main():
     print("[State] Checkpointing progress...")
     state.set_state(p_id, s_id, "ingest_step", "last_index", 1)
     print(f"✓ Progress Cursor: {state.get_state(p_id, s_id, 'ingest_step', 'last_index')}")
+
+    print("\n--- Testing Deletion Logic ---")
+    storage = get_object_store()
+    p_id, s_id = "test_project", "sync_v1"
+
+    # 1. Create a temp file to delete
+    uri = storage.upload_json(p_id, s_id, "temp_delete.json", {"status": "to_be_deleted"})
+    print(f"Created temporary file at: {uri}")
+
+    # 2. Test Security: Attempting to delete with wrong project_id
+    try:
+        print("[Test] Attempting unauthorized deletion (wrong project)...")
+        storage.delete_json("malicious_project", s_id, uri)
+    except PermissionError as e:
+        print(f"✓ Security Catch: {e}")
+
+    # 3. Test Successful Deletion
+    print("[Test] Performing authorized deletion...")
+    success = storage.delete_json(p_id, s_id, uri)
+    if success:
+        print("✓ File deleted successfully.")
+
+    # 4. Verify it's gone
+    print("[Test] Verifying file no longer exists...")
+    try:
+        storage.download_json(p_id, s_id, uri)
+        print("✗ Error: File still exists!")
+    except Exception:
+        print("✓ Verification Success: File is confirmed missing.")
 
 if __name__ == "__main__":
     main()
