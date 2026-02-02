@@ -16,7 +16,7 @@ def run_test():
 
     logger = WeavexServicesLogger(
         project_id=os.environ["WEAVEX_PROJECT_ID"],
-        logger_type="PUB_SUB"
+        logger_type="PUBSUB"
     )
 
     try:

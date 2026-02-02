@@ -34,8 +34,17 @@ class FirestoreStateStore(StateStore):
     """Google Cloud Firestore implementation."""
 
     def __init__(self):
-        # Graceful default: Use "weavex-store" database
-        db_name = os.environ.get("FIRESTORE_DATABASE", "weavex-state")
+        # Get the base database name
+        base_db = os.environ.get("FIRESTORE_DATABASE", "weavex-state")
+
+        # Get the region setting
+        region = os.getenv("WEAVEX_SERVICE_REGION", "eu").lower()
+
+        # Apply suffix logic
+        if region == "eu":
+            db_name = f"{base_db}-eu"
+        else:
+            db_name = base_db
 
         # Initialize client with the specific database name
         self.db = firestore.Client(database=db_name)

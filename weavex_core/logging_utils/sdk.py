@@ -15,8 +15,22 @@ class WeavexServicesLogger:
         self.gcp_project_id = gcp_project_id or os.getenv("GCP_PROJECT_ID")
         self.logger_type = logger_type
 
+        print("in here")
+        print(logger_type)
+
         if self.logger_type == "PUBSUB":
-            topic_id = os.getenv("WEAVEX_LOG_TOPIC", "weavex-logs")
+            base_topic = os.getenv("WEAVEX_LOG_TOPIC", "weavex-logs")
+            # Get the region setting
+            region = os.getenv("WEAVEX_SERVICE_REGION", "eu").lower()
+
+            # Apply suffix logic: only add "-eu" if the region is explicitly "eu"
+            if region == "eu":
+                topic_id = f"{base_topic}-eu"
+            else:
+                topic_id = base_topic
+
+            print(topic_id)
+
             self.logger = PubSubLogger(
                 topic_id=topic_id,
                 project_id=self.project_id,

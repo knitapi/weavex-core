@@ -26,10 +26,21 @@ class GCSObjectStore(ObjectStore):
     """Google Cloud Storage implementation."""
 
     def __init__(self):
-        # Graceful default: If BUCKET_NAME is missing, use fallback
-        self.bucket_name = os.environ.get("BUCKET_NAME", "weavex-flow-storage")
-        self.client = storage.Client()
-        self.bucket = self.client.bucket(self.bucket_name)
+        # Get the base bucket name
+        base_bucket = os.environ.get("BUCKET_NAME", "weavex-flow-storage")
+
+        # Get the region setting
+        region = os.getenv("WEAVEX_SERVICE_REGION", "eu").lower()
+
+        # Apply suffix logic
+        if region == "eu":
+            self.bucket_name = f"{base_bucket}-eu"
+        else:
+            self.bucket_name = base_bucket
+
+        # Initialize GCS client and bucket reference
+        self.storage_client = storage.Client()
+        self.bucket = self.storage_client.bucket(self.bucket_name)
 
     def upload_json(self, project_id: str, sync_id: str, key: str, data: Any) -> str:
         # Construct path using project_id and sync_id
