@@ -84,7 +84,7 @@ class PubSubLogger(BaseLogger):
         # 2. Standard enrichment
         data = self._enrich(payload)
         message_bytes = json.dumps(data, default=str).encode("utf-8")
-        print(message_bytes, flush=True)
+        # print(message_bytes, flush=True)
 
         # 3. Publish with 'log_table' as a metadata attribute
         future = self.publisher.publish(
