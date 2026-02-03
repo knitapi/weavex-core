@@ -32,6 +32,7 @@ def make_passthrough_call(
     execution_id = context.get("execution_id")
     # Retrieve environment, defaulting to production
     knit_env = str(context.get("knit_env", "production")).lower()
+    region = str(context.get("region", "")).lower()
 
     if not api_key:
         raise ValueError("Missing 'knit_api_key' in context. Authentication is required.")
@@ -40,9 +41,10 @@ def make_passthrough_call(
         raise ValueError("Missing 'execution_id' in context. Tracing is required.")
 
     # 2. Setup Request
-    # Dynamic URL selection based on environment
     if knit_env == "sandbox":
         base_url = "https://api.sandbox.getknit.dev/v1.0/passthrough"
+    elif region == "eu":
+        base_url = "https://api.eu.getknit.dev/v1.0/passthrough"
     else:
         base_url = "https://api.getknit.dev/v1.0/passthrough"
 
