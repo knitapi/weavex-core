@@ -42,7 +42,7 @@ def make_passthrough_call(
 
     # 2. Setup Request
     if knit_env == "sandbox":
-        base_url = "https://api.sandbox.getknit.dev/v1.0/passthrough"
+        base_url = "https://api.sandbox.getknit.dev/v1.0/weavex.passthrough"
     elif region == "eu":
         base_url = "https://api.eu.getknit.dev/v1.0/passthrough"
     else:
@@ -57,6 +57,7 @@ def make_passthrough_call(
 
     # TODO: send 'context' as well
     payload = {
+        "context": context,
         "method": method.upper(),
         "path": path,
         "body": json.dumps(body) if body else None,
