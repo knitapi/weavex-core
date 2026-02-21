@@ -72,7 +72,17 @@ class FirestoreStateStore(StateStore):
 
     def delete_state(self, project_id: str, sync_id: str, step_id: str, key: str) -> None:
         doc_ref = self._get_state_doc(project_id, sync_id, step_id)
-        doc_ref.update({key: firestore.DELETE_FIELD})
+
+        try:
+            # We use update because we only want to remove a specific field
+            doc_ref.update({key: firestore.DELETE_FIELD})
+        except Exception as e:
+            # Firestore throws a 404 (NotFound) if the document doesn't exist.
+            # We catch it gracefully because deleting a field from a
+            # non-existent document is effectively a "success".
+            if "404" in str(e) or "NOT_FOUND" in str(e).upper():
+                return
+            raise e # Re-raise if it's a different error (like permission denied)
 
     def get_hash(self, project_id: str, record_id: str) -> Optional[str]:
         doc = self._get_hash_doc(project_id, record_id).get()
