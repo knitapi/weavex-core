@@ -44,9 +44,9 @@ def make_passthrough_call(
     if knit_env == "sandbox":
         base_url = "https://api.sandbox.getknit.dev/v1.0/weavex.passthrough"
     elif region == "eu":
-        base_url = "https://api.eu.getknit.dev/v1.0/passthrough"
+        base_url = "https://api.eu.getknit.dev/v1.0/weavex.passthrough"
     else:
-        base_url = "https://api.getknit.dev/v1.0/passthrough"
+        base_url = "https://api.getknit.dev/v1.0/weavex.passthrough"
 
     final_headers = {
         "Authorization": f"Bearer {api_key}",
@@ -79,9 +79,16 @@ def make_passthrough_call(
     try:
         if resp.content:
             proxy_data = resp.json()
-            response_wrapper = proxy_data.get("data", {}).get("response", {})
-
+            
             final_headers = response_wrapper.get("headers", {})
+            
+            success = proxy_data.get("success", False)
+            if not success:
+                error_info = proxy_data.get("error", {})
+                error_message = error_info.get("msg", "Unknown error from proxy")
+                return VendorResponse(actual_resp=resp.content, status_code=final_status, body=error_message, headers=final_headers)
+            
+            response_wrapper = proxy_data.get("data", {}).get("response", {})
             raw_body_str = response_wrapper.get("body", "{}")
 
             try:
