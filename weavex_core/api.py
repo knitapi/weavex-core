@@ -21,7 +21,7 @@ def make_passthrough_call(
 ) -> VendorResponse:
     """
     Makes an authenticated call via the Knit API Proxy.
-    Validates that the context contains required auth and tracing details.
+    Handles nested JSON string decoding for backward compatibility.
     """
 
     # 1. Strict Validation of Context
@@ -30,12 +30,11 @@ def make_passthrough_call(
 
     api_key = context.get("knit_api_key")
     execution_id = context.get("execution_id")
-    # Retrieve environment, defaulting to production
     knit_env = str(context.get("knit_env", "production")).lower()
     region = str(context.get("region", "")).lower()
 
-    if not api_key:
-        raise ValueError("Missing 'knit_api_key' in context. Authentication is required.")
+    if not api_key or not execution_id:
+        raise ValueError("Missing 'knit_api_key' or 'execution_id' in context.")
 
     if not execution_id:
         raise ValueError("Missing 'execution_id' in context. Tracing is required.")
@@ -55,7 +54,6 @@ def make_passthrough_call(
         "Content-Type": "application/json"
     }
 
-    # TODO: send 'context' as well
     payload = {
         "context": context,
         "method": method.upper(),
@@ -68,6 +66,7 @@ def make_passthrough_call(
     # 3. Network Call
     try:
         resp = requests.post(base_url, json=payload, headers=final_headers)
+        resp_content = resp.content
     except Exception as e:
         raise RuntimeError(f"Proxy Network Connection Error: {e}")
 
@@ -77,25 +76,40 @@ def make_passthrough_call(
     final_headers = {}
 
     try:
-        if resp.content:
-            proxy_data = resp.json()
-            
-            final_headers = response_wrapper.get("headers", {})
-            
-            success = proxy_data.get("success", False)
-            if not success:
-                error_info = proxy_data.get("error", {})
-                error_message = error_info.get("msg", "Unknown error from proxy")
-                return VendorResponse(actual_resp=resp.content, status_code=final_status, body=error_message, headers=final_headers)
-            
-            response_wrapper = proxy_data.get("data", {}).get("response", {})
-            raw_body_str = response_wrapper.get("body", "{}")
+        proxy_data = resp.json()
 
+        # Check for proxy-level success
+        if not proxy_data.get("success", False):
+            error_info = proxy_data.get("error", {})
+            final_body = error_info.get("msg", "Unknown error from proxy")
+            return VendorResponse(actual_resp=resp_content, status_code=final_status, body=final_body, headers={})
+
+        # Navigate to the inner response
+        response_wrapper = proxy_data.get("data", {}).get("response", {})
+        final_headers = response_wrapper.get("headers", {})
+        raw_body = response_wrapper.get("body", "{}")
+
+        # --- RECURSIVE DECODING LOGIC ---
+        # This handles the "Double-Encoding" shown in your logs
+        if isinstance(raw_body, str):
             try:
-                final_body = json.loads(raw_body_str)
+                # First pass: Converts escaped string to clean string or dict
+                decoded = json.loads(raw_body)
+                # Second pass: If it's still a string, decode it again into a dict
+                if isinstance(decoded, str):
+                    try:
+                        final_body = json.loads(decoded)
+                    except (json.JSONDecodeError, TypeError):
+                        final_body = decoded
+                else:
+                    final_body = decoded
             except (json.JSONDecodeError, TypeError):
-                final_body = raw_body_str
+                final_body = raw_body
+        else:
+            final_body = raw_body
+
     except Exception:
+        # Fallback to raw text if JSON parsing fails entirely
         final_body = resp.text
 
     return VendorResponse(actual_resp=resp.content, status_code=final_status, body=final_body, headers=final_headers)
