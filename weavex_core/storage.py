@@ -1,6 +1,7 @@
 import os
 import json
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
 from typing import Any
 from google.cloud import storage
 
@@ -20,6 +21,23 @@ class ObjectStore(ABC):
     @abstractmethod
     def delete_json(self, project_id: str, sync_id: str, uri: str) -> bool:
         """Deletes a JSON object from storage. Returns True if successful."""
+        pass
+
+    @abstractmethod
+    def upload_report(self, project_id: str, sync_job_id: str, sync_run_id: str,
+                      file_content: bytes, extension: str) -> str:
+        """Uploads a report file. Returns the GCS URI."""
+        pass
+
+    @abstractmethod
+    def download_report(self, project_id: str, sync_job_id: str, uri: str) -> bytes:
+        """Downloads a report file. Returns raw bytes."""
+        pass
+
+    @abstractmethod
+    def get_report_presigned_url(self, project_id: str, sync_job_id: str, uri: str,
+                                  expiration_seconds: int = 3600) -> str:
+        """Returns a presigned public URL for a report file."""
         pass
 
 class GCSObjectStore(ObjectStore):
@@ -101,6 +119,58 @@ class GCSObjectStore(ObjectStore):
             blob.delete()
             return True
         return False
+
+    _REPORT_CONTENT_TYPES = {
+        "csv": "text/csv",
+        "txt": "text/plain",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+
+    def upload_report(self, project_id: str, sync_job_id: str, sync_run_id: str,
+                      file_content: bytes, extension: str) -> str:
+        if extension not in self._REPORT_CONTENT_TYPES:
+            raise ValueError(f"Unsupported report extension: {extension}. Must be one of {list(self._REPORT_CONTENT_TYPES)}")
+
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"{sync_run_id}_{timestamp}_report.{extension}"
+        full_path = f"{project_id}/{sync_job_id}/reports/{filename}"
+        blob = self.bucket.blob(full_path)
+
+        blob.upload_from_string(file_content, content_type=self._REPORT_CONTENT_TYPES[extension])
+
+        return f"gs://{self.bucket_name}/{full_path}"
+
+    def _resolve_report_blob(self, project_id: str, sync_job_id: str, uri: str):
+        if not uri.startswith("gs://"):
+            raise ValueError(f"Invalid GCS URI: {uri}. Must start with gs://")
+
+        try:
+            path_parts = uri.replace("gs://", "").split("/", 1)
+            bucket_name, blob_path = path_parts[0], path_parts[1]
+        except IndexError:
+            raise ValueError(f"Malformed GCS URI: {uri}")
+
+        expected_prefix = f"{project_id}/{sync_job_id}/"
+        if not blob_path.startswith(expected_prefix):
+            raise PermissionError(
+                f"Security mismatch: URI {uri} does not belong to Project: {project_id}, Sync Job: {sync_job_id}"
+            )
+
+        target_bucket = self.bucket if bucket_name == self.bucket_name else self.storage_client.bucket(bucket_name)
+        return target_bucket.blob(blob_path)
+
+    def download_report(self, project_id: str, sync_job_id: str, uri: str) -> bytes:
+        blob = self._resolve_report_blob(project_id, sync_job_id, uri)
+        return blob.download_as_bytes()
+
+    def get_report_presigned_url(self, project_id: str, sync_job_id: str, uri: str,
+                                  expiration_seconds: int = 3600) -> str:
+        blob = self._resolve_report_blob(project_id, sync_job_id, uri)
+        return blob.generate_signed_url(
+            expiration=timedelta(seconds=expiration_seconds),
+            method="GET",
+            version="v4",
+        )
 
 def get_object_store() -> ObjectStore:
     """Factory to get the configured ObjectStore implementation. Defaults to GCS."""
