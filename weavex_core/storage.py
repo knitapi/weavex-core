@@ -24,18 +24,18 @@ class ObjectStore(ABC):
         pass
 
     @abstractmethod
-    def upload_report(self, project_id: str, sync_job_id: str, sync_run_id: str,
+    def upload_report(self, project_id: str, sync_id: str, context: dict,
                       file_content: bytes, extension: str) -> str:
         """Uploads a report file. Returns the GCS URI."""
         pass
 
     @abstractmethod
-    def download_report(self, project_id: str, sync_job_id: str, uri: str) -> bytes:
+    def download_report(self, project_id: str, sync_id: str, context: dict, uri: str) -> bytes:
         """Downloads a report file. Returns raw bytes."""
         pass
 
     @abstractmethod
-    def get_report_presigned_url(self, project_id: str, sync_job_id: str, uri: str,
+    def get_report_presigned_url(self, project_id: str, sync_id: str, context: dict, uri: str,
                                   expiration_seconds: int = 3600) -> str:
         """Returns a presigned public URL for a report file."""
         pass
@@ -126,13 +126,15 @@ class GCSObjectStore(ObjectStore):
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }
 
-    def upload_report(self, project_id: str, sync_job_id: str, sync_run_id: str,
+    def upload_report(self, project_id: str, sync_id: str, context: dict,
                       file_content: bytes, extension: str) -> str:
+        sync_job_id = (context or {}).get("sync_job_id") or sync_id
+
         if extension not in self._REPORT_CONTENT_TYPES:
             raise ValueError(f"Unsupported report extension: {extension}. Must be one of {list(self._REPORT_CONTENT_TYPES)}")
 
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        filename = f"{sync_run_id}_{timestamp}_report.{extension}"
+        filename = f"{sync_id}_{timestamp}_report.{extension}"
         full_path = f"{project_id}/{sync_job_id}/reports/{filename}"
         blob = self.bucket.blob(full_path)
 
@@ -159,12 +161,14 @@ class GCSObjectStore(ObjectStore):
         target_bucket = self.bucket if bucket_name == self.bucket_name else self.storage_client.bucket(bucket_name)
         return target_bucket.blob(blob_path)
 
-    def download_report(self, project_id: str, sync_job_id: str, uri: str) -> bytes:
+    def download_report(self, project_id: str, sync_id: str, context: dict, uri: str) -> bytes:
+        sync_job_id = (context or {}).get("sync_job_id") or sync_id
         blob = self._resolve_report_blob(project_id, sync_job_id, uri)
         return blob.download_as_bytes()
 
-    def get_report_presigned_url(self, project_id: str, sync_job_id: str, uri: str,
+    def get_report_presigned_url(self, project_id: str, sync_id: str, context: dict, uri: str,
                                   expiration_seconds: int = 3600) -> str:
+        sync_job_id = (context or {}).get("sync_job_id") or sync_id
         blob = self._resolve_report_blob(project_id, sync_job_id, uri)
         return blob.generate_signed_url(
             expiration=timedelta(seconds=expiration_seconds),
