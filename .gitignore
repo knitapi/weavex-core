@@ -1,2 +1,13 @@
 /.idea/
 /venv/
+/.claude/
+/.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/

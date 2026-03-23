@@ -2,7 +2,7 @@ import os
 import json
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Optional
 from google.cloud import storage
 
 class ObjectStore(ABC):
@@ -128,21 +128,26 @@ class GCSObjectStore(ObjectStore):
 
     def upload_report(self, project_id: str, sync_id: str, context: dict,
                       file_content: bytes, extension: str) -> str:
-        sync_job_id = (context or {}).get("sync_job_id") or sync_id
+        sync_job_id = (context or {}).get("sync_job_id") or None
 
         if extension not in self._REPORT_CONTENT_TYPES:
             raise ValueError(f"Unsupported report extension: {extension}. Must be one of {list(self._REPORT_CONTENT_TYPES)}")
 
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"{sync_id}_{timestamp}_report.{extension}"
-        full_path = f"{project_id}/{sync_job_id}/reports/{filename}"
+        
+        if (sync_job_id):
+            full_path = f"{project_id}/{sync_job_id}/reports/{filename}"
+        else:
+            full_path = f"{project_id}/reports/{filename}"
+            
         blob = self.bucket.blob(full_path)
 
         blob.upload_from_string(file_content, content_type=self._REPORT_CONTENT_TYPES[extension])
 
         return f"gs://{self.bucket_name}/{full_path}"
 
-    def _resolve_report_blob(self, project_id: str, sync_job_id: str, uri: str):
+    def _resolve_report_blob(self, project_id: str, sync_job_id: Optional[str], uri: str):
         if not uri.startswith("gs://"):
             raise ValueError(f"Invalid GCS URI: {uri}. Must start with gs://")
 
@@ -152,7 +157,10 @@ class GCSObjectStore(ObjectStore):
         except IndexError:
             raise ValueError(f"Malformed GCS URI: {uri}")
 
-        expected_prefix = f"{project_id}/{sync_job_id}/"
+        if sync_job_id:
+            expected_prefix = f"{project_id}/{sync_job_id}/"
+        else:
+            expected_prefix = f"{project_id}/reports/"
         if not blob_path.startswith(expected_prefix):
             raise PermissionError(
                 f"Security mismatch: URI {uri} does not belong to Project: {project_id}, Sync Job: {sync_job_id}"
@@ -162,13 +170,13 @@ class GCSObjectStore(ObjectStore):
         return target_bucket.blob(blob_path)
 
     def download_report(self, project_id: str, sync_id: str, context: dict, uri: str) -> bytes:
-        sync_job_id = (context or {}).get("sync_job_id") or sync_id
+        sync_job_id = (context or {}).get("sync_job_id") or None
         blob = self._resolve_report_blob(project_id, sync_job_id, uri)
         return blob.download_as_bytes()
 
     def get_report_presigned_url(self, project_id: str, sync_id: str, context: dict, uri: str,
                                   expiration_seconds: int = 3600) -> str:
-        sync_job_id = (context or {}).get("sync_job_id") or sync_id
+        sync_job_id = (context or {}).get("sync_job_id") or None
         blob = self._resolve_report_blob(project_id, sync_job_id, uri)
         return blob.generate_signed_url(
             expiration=timedelta(seconds=expiration_seconds),
