@@ -40,23 +40,6 @@ class ObjectStore(ABC):
         """Returns a presigned public URL for a report file."""
         pass
 
-    @abstractmethod
-    def upload_report(self, project_id: str, sync_id: str, context: dict,
-                      file_content: bytes, extension: str) -> str:
-        """Uploads a report file. Returns the GCS URI."""
-        pass
-
-    @abstractmethod
-    def download_report(self, project_id: str, sync_id: str, context: dict, uri: str) -> bytes:
-        """Downloads a report file. Returns raw bytes."""
-        pass
-
-    @abstractmethod
-    def get_report_presigned_url(self, project_id: str, sync_id: str, context: dict, uri: str,
-                                  expiration_seconds: int = 3600) -> str:
-        """Returns a presigned public URL for a report file."""
-        pass
-
 class GCSObjectStore(ObjectStore):
     """Google Cloud Storage implementation."""
 
