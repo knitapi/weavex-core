@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any
 from google.cloud import storage
 
+
 class ObjectStore(ABC):
     """Abstract interface for Object Storage."""
 
@@ -24,21 +25,36 @@ class ObjectStore(ABC):
         pass
 
     @abstractmethod
-    def upload_report(self, project_id: str, sync_id: str, context: dict,
-                      file_content: bytes, extension: str) -> str:
+    def upload_report(
+        self,
+        project_id: str,
+        sync_id: str,
+        context: dict,
+        file_content: bytes,
+        extension: str,
+    ) -> str:
         """Uploads a report file. Returns the GCS URI."""
         pass
 
     @abstractmethod
-    def download_report(self, project_id: str, sync_id: str, context: dict, uri: str) -> bytes:
+    def download_report(
+        self, project_id: str, sync_id: str, context: dict, uri: str
+    ) -> bytes:
         """Downloads a report file. Returns raw bytes."""
         pass
 
     @abstractmethod
-    def get_report_presigned_url(self, project_id: str, sync_id: str, context: dict, uri: str,
-                                  expiration_seconds: int = 3600) -> str:
+    def get_report_presigned_url(
+        self,
+        project_id: str,
+        sync_id: str,
+        context: dict,
+        uri: str,
+        expiration_seconds: int = 3600,
+    ) -> str:
         """Returns a presigned public URL for a report file."""
         pass
+
 
 class GCSObjectStore(ObjectStore):
     """Google Cloud Storage implementation."""
@@ -65,10 +81,7 @@ class GCSObjectStore(ObjectStore):
         full_path = f"{project_id}/{sync_id}/{key}"
         blob = self.bucket.blob(full_path)
 
-        blob.upload_from_string(
-            data=json.dumps(data),
-            content_type='application/json'
-        )
+        blob.upload_from_string(data=json.dumps(data), content_type="application/json")
 
         return f"gs://{self.bucket_name}/{full_path}"
 
@@ -91,7 +104,11 @@ class GCSObjectStore(ObjectStore):
             )
 
         # Download logic
-        target_bucket = self.bucket if bucket_name == self.bucket_name else self.client.bucket(bucket_name)
+        target_bucket = (
+            self.bucket
+            if bucket_name == self.bucket_name
+            else self.client.bucket(bucket_name)
+        )
         blob = target_bucket.blob(blob_path)
 
         return json.loads(blob.download_as_text())
@@ -112,7 +129,11 @@ class GCSObjectStore(ObjectStore):
             )
 
         # Execute deletion
-        target_bucket = self.bucket if bucket_name == self.bucket_name else self.client.bucket(bucket_name)
+        target_bucket = (
+            self.bucket
+            if bucket_name == self.bucket_name
+            else self.client.bucket(bucket_name)
+        )
         blob = target_bucket.blob(blob_path)
 
         if blob.exists():
@@ -126,23 +147,34 @@ class GCSObjectStore(ObjectStore):
         "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }
 
-    def upload_report(self, project_id: str, sync_id: str, context: dict,
-                      file_content: bytes, extension: str) -> str:
-        sync_job_id = (context or {}).get("sync_job_id") or sync_id
-
+    def upload_report(
+        self,
+        project_id: str,
+        sync_id: str,
+        context: dict,
+        file_content: bytes,
+        extension: str,
+    ) -> str:
         if extension not in self._REPORT_CONTENT_TYPES:
-            raise ValueError(f"Unsupported report extension: {extension}. Must be one of {list(self._REPORT_CONTENT_TYPES)}")
+            raise ValueError(
+                f"Unsupported report extension: {extension}. Must be one of {list(self._REPORT_CONTENT_TYPES)}"
+            )
+            
+        sync_run_id = (context or {}).get("sync_run_id")
+        report_prefix = f"{sync_run_id}" if sync_run_id else f"{sync_id}"
 
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        filename = f"{sync_id}_{timestamp}_report.{extension}"
-        full_path = f"{project_id}/{sync_job_id}/reports/{filename}"
+        filename = f"{report_prefix}_{timestamp}_report.{extension}"
+        full_path = f"{project_id}/{sync_id}/reports/{filename}"
         blob = self.bucket.blob(full_path)
 
-        blob.upload_from_string(file_content, content_type=self._REPORT_CONTENT_TYPES[extension])
+        blob.upload_from_string(
+            file_content, content_type=self._REPORT_CONTENT_TYPES[extension]
+        )
 
         return f"gs://{self.bucket_name}/{full_path}"
 
-    def _resolve_report_blob(self, project_id: str, sync_job_id: str, uri: str):
+    def _resolve_report_blob(self, project_id: str, sync_id: str, uri: str):
         if not uri.startswith("gs://"):
             raise ValueError(f"Invalid GCS URI: {uri}. Must start with gs://")
 
@@ -152,29 +184,40 @@ class GCSObjectStore(ObjectStore):
         except IndexError:
             raise ValueError(f"Malformed GCS URI: {uri}")
 
-        expected_prefix = f"{project_id}/{sync_job_id}/"
+        expected_prefix = f"{project_id}/{sync_id}/"
         if not blob_path.startswith(expected_prefix):
             raise PermissionError(
-                f"Security mismatch: URI {uri} does not belong to Project: {project_id}, Sync Job: {sync_job_id}"
+                f"Security mismatch: URI {uri} does not belong to Project: {project_id}, Sync: {sync_id}"
             )
 
-        target_bucket = self.bucket if bucket_name == self.bucket_name else self.storage_client.bucket(bucket_name)
+        target_bucket = (
+            self.bucket
+            if bucket_name == self.bucket_name
+            else self.storage_client.bucket(bucket_name)
+        )
         return target_bucket.blob(blob_path)
 
-    def download_report(self, project_id: str, sync_id: str, context: dict, uri: str) -> bytes:
-        sync_job_id = (context or {}).get("sync_job_id") or sync_id
-        blob = self._resolve_report_blob(project_id, sync_job_id, uri)
+    def download_report(
+        self, project_id: str, sync_id: str, context: dict, uri: str
+    ) -> bytes:
+        blob = self._resolve_report_blob(project_id, sync_id, uri)
         return blob.download_as_bytes()
 
-    def get_report_presigned_url(self, project_id: str, sync_id: str, context: dict, uri: str,
-                                  expiration_seconds: int = 3600) -> str:
-        sync_job_id = (context or {}).get("sync_job_id") or sync_id
-        blob = self._resolve_report_blob(project_id, sync_job_id, uri)
+    def get_report_presigned_url(
+        self,
+        project_id: str,
+        sync_id: str,
+        context: dict,
+        uri: str,
+        expiration_seconds: int = 3600,
+    ) -> str:
+        blob = self._resolve_report_blob(project_id, sync_id, uri)
         return blob.generate_signed_url(
             expiration=timedelta(seconds=expiration_seconds),
             method="GET",
             version="v4",
         )
+
 
 def get_object_store() -> ObjectStore:
     """Factory to get the configured ObjectStore implementation. Defaults to GCS."""
