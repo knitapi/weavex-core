@@ -39,8 +39,7 @@ def run_test_call():
                     }, indent=2)
                 }
             ],
-            integration_id="mg_BMsnPnZR8EIVkls7YBjs1E",
-            provider="gemini"
+            integration_id="mg_BMsnPnZR8EIVkls7YBjs1E"
         )
 
         print(f"\nModel: {response.model}")

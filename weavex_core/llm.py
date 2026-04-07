@@ -57,7 +57,6 @@ def _get_model(provider: str, model_id: str, api_key: str) -> BaseChatModel:
 def complete_one_shot(
         context: dict,
         integration_id: str,
-        provider: str,
         system: str,
         user: str) -> LLMResponse:
     messages = [
@@ -67,26 +66,23 @@ def complete_one_shot(
     return complete(
         context,
         messages,
-        integration_id,
-        provider
+        integration_id
     )
 
 def complete(
         context: dict,
         messages: list[dict],
-        integration_id: str,
-        provider: str,
+        integration_id: str
 ) -> LLMResponse:
     if not context.get("knit_api_key"):
         raise ValueError("Missing 'knit_api_key' in context")
     if not integration_id:
         raise ValueError("Missing 'integration_id'")
-    if not provider:
-        raise ValueError("Missing 'provider'")
 
     llm_config = _fetch_llm_config(context, integration_id)
     model_id = llm_config["model_id"]
     api_key = llm_config["api_key"]
+    provider = llm_config["provider"]
 
     mapping = {"user": HumanMessage, "system": SystemMessage, "assistant": AIMessage}
     lc_messages = [mapping[m["role"]](content=m["content"]) for m in messages]
