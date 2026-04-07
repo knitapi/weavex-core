@@ -12,6 +12,8 @@ from .state import get_sync_state
 # 4. Expose API Proxy Helper
 from .api import make_passthrough_call
 
+from .llm import complete, complete_one_shot, LLMResponse
+
 # Expose Knit SDKs
 from . import knit_consumer
 from . import knit_mail
@@ -26,4 +28,5 @@ __all__ = [
     "knit_consumer",
     "knit_mail",
     "knit_sync",
+    "llm"
 ]
