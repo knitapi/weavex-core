@@ -3,10 +3,10 @@ from weavex_core.llm import complete
 
 # 1. Configuration
 MY_CONTEXT = {
-    "knit_api_key": "your_api_key_here",
+    "knit_api_key": "0e725a74db1050550bc2f287ec3c8f1e51a1a82fd673d387a7592707029b6606",
     "execution_id": "manual_test_001",
-    "integration_id": "your_integration_id_here",
-    "knit_env": "production",
+    "integration_id": "mg_qeL5xl6gYIonhtUMIXGzNx",
+    "knit_env": "sandbox",
     "region": "",
 }
 
@@ -39,7 +39,7 @@ def run_test_call():
                     }, indent=2)
                 }
             ],
-            integration_id="mg_BMsnPnZR8EIVkls7YBjs1E"
+            integration_id=MY_CONTEXT["integration_id"]
         )
 
         print(f"\nModel: {response.model}")

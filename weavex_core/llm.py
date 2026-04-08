@@ -21,8 +21,7 @@ def _fetch_llm_config(context: dict, integration_id: str) -> dict:
     elif region == "eu":
         base_url = "https://api.eu.getknit.dev/v1.0"
     else:
-        # base_url = "https://api.getknit.dev/v1.0"
-        base_url = "http://localhost:8080"
+        base_url = "https://api.getknit.dev/v1.0"
 
     headers = {
         "Authorization": f"Bearer {api_key}",
