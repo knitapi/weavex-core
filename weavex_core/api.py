@@ -17,7 +17,8 @@ def make_passthrough_call(
         path: str,
         body: Optional[dict] = None,
         content_type: str = None,
-        headers: Optional[dict] = None
+        headers: Optional[dict] = None,
+        base_url: str = None
 ) -> VendorResponse:
     """
     Makes an authenticated call via the Knit API Proxy.
@@ -62,6 +63,9 @@ def make_passthrough_call(
         "contentType": content_type if content_type else "application/json",
         "headers": headers if headers else {"Accept": "application/json"}
     }
+    
+    if base_url:
+        payload["baseUrl"] = base_url
 
     # 3. Network Call
     try:
