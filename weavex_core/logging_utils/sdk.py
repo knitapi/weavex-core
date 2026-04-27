@@ -98,7 +98,7 @@ class WeavexServicesLogger:
             "vendor_method": vendor_method,
             "vendor_request_id": vendor_req_id,
             # Stringify JSON fields
-            "metadata": json.dumps(metadata or {}),
+            "sync_data": json.dumps(metadata or {}),
             "context": json.dumps(context or {})
         }
         self.logger.log(payload, blocking=True)
