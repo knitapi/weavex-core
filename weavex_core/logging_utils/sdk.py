@@ -98,7 +98,7 @@ class WeavexServicesLogger:
             "vendor_method": vendor_method,
             "vendor_request_id": vendor_req_id,
             # Stringify JSON fields
-            "sync_data": json.dumps(metadata or {}),
+            "metadata": json.dumps(metadata or {}),
             "context": json.dumps(context or {})
         }
         self.logger.log(payload, blocking=True)
@@ -122,7 +122,7 @@ class WeavexServicesLogger:
             "duration_ms": int(duration_ms),
             "status": status,
             # Stringify JSON fields
-            "bill_data": json.dumps(metadata or {}),
+            "metadata": json.dumps(metadata or {}),
             "context": json.dumps(context or {})
         }
         self.logger.log(payload, blocking=True)
