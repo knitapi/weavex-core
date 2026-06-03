@@ -12,7 +12,8 @@ class WeavexAPIService:
         """Resolves URL and Headers based on context"""
         api_key = context.get("knit_api_key")
 
-        base_url = "https://weavex-cerebro-280006377455.europe-west1.run.app"
+        # base_url = "https://weavex-cerebro-280006377455.europe-west1.run.app"
+        base_url = "http://localhost:8080"
 
         headers = {
             "Authorization": f"Bearer {api_key}",
