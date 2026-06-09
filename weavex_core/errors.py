@@ -15,6 +15,7 @@ class WeavexError(Exception):
         "payload_rejected",
         "schema_mismatch",
         "field_type_mismatch",
+        "connector_server_error"
     }
     RETRYABLE_ERRORS = {"rate_limited", "timeout", "connector_server_error"}
     NON_FIXABLE_ERRORS = {"auth_failure", "permission_denied"}
