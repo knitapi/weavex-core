@@ -1,5 +1,3 @@
-from multiprocessing import context
-
 import requests
 from typing import Optional
 
@@ -12,8 +10,7 @@ class WeavexAPIService:
         """Resolves URL and Headers based on context"""
         api_key = context.get("knit_api_key")
 
-        # base_url = "https://weavex-cerebro-280006377455.europe-west1.run.app"
-        base_url = "https://afd2-2401-4900-8f5c-3f7d-99c-9d1c-72f6-6cb6.ngrok-free.app"
+        base_url = "https://weavex-cerebro-280006377455.europe-west1.run.app"
 
         headers = {
             "Authorization": f"Bearer {api_key}",
