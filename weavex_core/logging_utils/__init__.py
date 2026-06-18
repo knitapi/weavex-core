@@ -12,6 +12,7 @@ def get_logger(project_id=None, env=None):
     if _GLOBAL_LOGGER is None:
         # Default to environment variables if arguments not passed
         pid = project_id or os.getenv("WEAVEX_PROJECT_ID", "weavex-475116")
+        print(project_id, pid)
         type = env or os.getenv("WEAVEX_LOGGER_TYPE", "PUBSUB")
         _GLOBAL_LOGGER = WeavexServicesLogger(project_id=pid, logger_type=type)
     return _GLOBAL_LOGGER
