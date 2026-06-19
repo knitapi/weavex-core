@@ -6,13 +6,9 @@ from .weavex_api_service import WeavexAPIService
 
 @dataclass
 class StepCheckpoint:
-    step_id: str           # snake_case step identifier e.g. "fetch_employees"
-    step_name: str         # friendly name e.g. "Fetch Employees from BambooHR"
-    connector: str         # integration key e.g. "bamboohr"
-    operation_type: str    # "read" | "write"
-    status: str            # "success" | "failed"
+    step_id: str  # snake_case step identifier e.g. "fetch_employees"
+    status: str  # "success" | "failed"
     error: Optional[dict]  # WeavexError.to_dict() on failure
-    attempt: int           # fix attempt number (0 = first run)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -33,6 +29,57 @@ class WorkflowCheckpointer:
         self.execution_id = context.get("execution_id")
         self._api = WeavexAPIService(context)
 
+    def is_complete(self, step_id: str) -> bool:
+        data = self._api.get_result_checkpoint(
+            self.project_id, self.execution_id, step_id
+        )
+        if not data:
+            return False
+        return StepCheckpoint.from_dict(data).status == "success"
+
+    def init(
+        self,
+        context: dict,
+        integration_ids: list,
+        user_input: dict,
+    ) -> dict:
+        return self._api.init_checkpoint(
+            self.project_id, self.execution_id, integration_ids, user_input, context
+        )
+
+    def success(
+        self,
+        step_id: str,
+        step_context: dict,
+    ) -> None:
+        cp = StepCheckpoint(step_id=step_id, status="success", error=None)
+
+        self._api.set_result_checkpoint(
+            self.project_id, self.execution_id, step_id, cp.to_dict(), step_context
+        )
+
+    def fail(
+        self,
+        step_id: str,
+        error_json: str,
+    ) -> None:
+        try:
+            error_dict = json.loads(error_json)
+        except (json.JSONDecodeError, TypeError):
+            error_dict = {"error_type": "unknown", "raw_error": error_json}
+        cp = StepCheckpoint(step_id=step_id, status="failed", error=error_dict)
+
+        self._api.set_result_checkpoint(
+            self.project_id, self.execution_id, step_id, cp.to_dict(), None
+        )
+
+    def clear(self) -> None:
+        """Call after full workflow success so the next fresh run starts clean."""
+        self._api.clear_checkpoint(self.project_id, self.execution_id)
+
+    # ── Deprecated ────────────────────────────────────────────────────────────
+
+    # Deprecated: use success() instead.
     def mark_success(
         self,
         step_id: str,
@@ -42,17 +89,13 @@ class WorkflowCheckpointer:
         attempt: int = 0,
         step_context: dict = None,
     ) -> None:
-        cp = StepCheckpoint(
-            step_id=step_id,
-            step_name=step_name,
-            connector=connector,
-            operation_type=operation_type,
-            status="success",
-            error=None,
-            attempt=attempt,
+        """Deprecated: use success() instead."""
+        cp = StepCheckpoint(step_id=step_id, status="success", error=None)
+        self._api.set_checkpoint(
+            self.project_id, self.execution_id, step_id, cp.to_dict(), step_context
         )
-        self._api.set_checkpoint(self.project_id, self.execution_id, step_id, cp.to_dict(), step_context)
 
+    # Deprecated: use fail() instead.
     def mark_failed(
         self,
         step_id: str,
@@ -62,31 +105,22 @@ class WorkflowCheckpointer:
         error_json: str,
         attempt: int = 0,
     ) -> None:
+        """Deprecated: use fail() instead."""
         try:
             error_dict = json.loads(error_json)
         except (json.JSONDecodeError, TypeError):
             error_dict = {"error_type": "unknown", "raw_error": error_json}
-        cp = StepCheckpoint(
-            step_id=step_id,
-            step_name=step_name,
-            connector=connector,
-            operation_type=operation_type,
-            status="failed",
-            error=error_dict,
-            attempt=attempt,
+        cp = StepCheckpoint(step_id=step_id, status="failed", error=error_dict)
+        self._api.set_checkpoint(
+            self.project_id, self.execution_id, step_id, cp.to_dict()
         )
-        self._api.set_checkpoint(self.project_id, self.execution_id, step_id, cp.to_dict())
 
+    # Deprecated: will be removed in a future version.
     def get_checkpoint(self, step_id: str) -> Optional[StepCheckpoint]:
-        data = self._api.get_checkpoint(self.project_id, self.execution_id, step_id)
+        """Deprecated: will be removed in a future version."""
+        data = self._api.get_result_checkpoint(
+            self.project_id, self.execution_id, step_id
+        )
         if not data:
             return None
         return StepCheckpoint.from_dict(data)
-
-    def is_complete(self, step_id: str) -> bool:
-        cp = self.get_checkpoint(step_id)
-        return cp is not None and cp.status == "success"
-
-    def clear(self) -> None:
-        """Call after full workflow success so the next fresh run starts clean."""
-        self._api.clear_checkpoint(self.project_id, self.execution_id)

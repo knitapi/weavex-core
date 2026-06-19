@@ -1,9 +1,9 @@
 import requests
 from typing import Optional
 
+
 class WeavexAPIService:
     def __init__(self, context: dict):
-        self._context = context
         self._base_url, self._headers = self.get_weavex_config(context)
 
     def get_weavex_config(self, context: dict):
@@ -16,10 +16,33 @@ class WeavexAPIService:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
-        
+
         return base_url, headers
 
-    def set_checkpoint(
+    def init_checkpoint(
+        self,
+        project_id: str,
+        execution_id: str,
+        integration_ids: list,
+        user_input: dict,
+        context: dict,
+    ) -> dict:
+        url = f"{self._base_url}/checkpoint.init"
+
+        payload = {
+            "context": context,
+            "projectId": project_id,
+            "executionId": execution_id,
+            "integrationIds": integration_ids,
+            "userInput": user_input,
+        }
+
+        resp = requests.post(url, headers=self._headers, json=payload)
+        resp.raise_for_status()
+
+        return resp.json().get("data", {})
+
+    def set_result_checkpoint(
         self,
         project_id: str,
         execution_id: str,
@@ -28,8 +51,62 @@ class WeavexAPIService:
         step_context: dict = None,
     ) -> None:
         url = f"{self._base_url}/checkpoint.set"
+
         payload = {
-            "context": self._context,
+            "projectId": project_id,
+            "stepId": step_id,
+            "executionId": execution_id,
+            "checkpoint": checkpoint,
+        }
+
+        if step_context is not None:
+            payload["stepContext"] = step_context
+
+        resp = requests.post(url, headers=self._headers, json=payload)
+        resp.raise_for_status()
+
+    def get_result_checkpoint(
+        self, project_id: str, execution_id: str, step_id: str
+    ) -> Optional[dict]:
+        url = f"{self._base_url}/checkpoint.get"
+
+        payload = {
+            "projectId": project_id,
+            "executionId": execution_id,
+            "stepId": step_id,
+        }
+
+        resp = requests.post(url, headers=self._headers, json=payload)
+        resp.raise_for_status()
+
+        return resp.json().get("data")
+
+    def clear_checkpoint(self, project_id: str, execution_id: str) -> None:
+        url = f"{self._base_url}/checkpoint.clear"
+
+        payload = {
+            "projectId": project_id,
+            "executionId": execution_id,
+        }
+
+        resp = requests.post(url, headers=self._headers, json=payload)
+
+        resp.raise_for_status()
+
+    # ── Deprecated ────────────────────────────────────────────────────────────
+
+    # Deprecated: use set_result_checkpoint() instead.
+    def set_checkpoint(
+        self,
+        project_id: str,
+        execution_id: str,
+        step_id: str,
+        checkpoint: dict,
+        step_context: dict = None,
+    ) -> None:
+        """Deprecated: use set_result_checkpoint() instead."""
+        url = f"{self._base_url}/checkpoint.set"
+        payload = {
             "projectId": project_id,
             "executionId": execution_id,
             "stepId": step_id,
@@ -40,26 +117,9 @@ class WeavexAPIService:
         resp = requests.post(url, headers=self._headers, json=payload)
         resp.raise_for_status()
 
+    # Deprecated: use get_result_checkpoint() instead.
     def get_checkpoint(
         self, project_id: str, execution_id: str, step_id: str
     ) -> Optional[dict]:
-        url = f"{self._base_url}/checkpoint.get"
-        payload = {
-            "context": self._context,
-            "projectId": project_id,
-            "executionId": execution_id,
-            "stepId": step_id,
-        }
-        resp = requests.post(url, headers=self._headers, json=payload)
-        resp.raise_for_status()
-        return resp.json().get("data")
-
-    def clear_checkpoint(self, project_id: str, execution_id: str) -> None:
-        url = f"{self._base_url}/checkpoint.clear"
-        payload = {
-            "context": self._context,
-            "projectId": project_id,
-            "executionId": execution_id,
-        }
-        resp = requests.post(url, headers=self._headers, json=payload)
-        resp.raise_for_status()
+        """Deprecated: use get_result_checkpoint() instead."""
+        return self.get_result_checkpoint(project_id, execution_id, step_id)
