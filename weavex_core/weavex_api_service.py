@@ -11,7 +11,7 @@ class WeavexAPIService:
         api_key = context.get("knit_api_key")
 
         # base_url = "https://weavex-cerebro-280006377455.europe-west1.run.app"
-        base_url = "https://8198-2401-4900-8f5d-66e3-e1e8-6c1c-135c-4240.ngrok-free.app"
+        base_url = "https://4348-2401-4900-8f5d-66e3-cc68-c314-266a-a849.ngrok-free.app"
 
         headers = {
             "Authorization": f"Bearer {api_key}",
