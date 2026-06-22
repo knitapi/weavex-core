@@ -66,8 +66,8 @@ class StdoutLogger(BaseLogger):
 # ASYNC BIGQUERY LOGGER (Production)
 # -------------------------------------------------------------------------
 class PubSubLogger(BaseLogger):
-    def __init__(self, topic_id: str, project_id: str = None, gcp_project_id: str = None):
-        super().__init__(project_id=project_id, gcp_project_id=gcp_project_id)
+    def __init__(self, topic_id: str, project_id: str = None, gcp_project_id: str = None, account_id: str = None):
+        super().__init__(project_id=project_id, account_id=account_id, gcp_project_id=gcp_project_id)
         self.publisher = pubsub_v1.PublisherClient()
         # USE gcp_project_id for the resource path, NOT internal project_id
         self.topic_path = self.publisher.topic_path(self.gcp_project_id, topic_id)

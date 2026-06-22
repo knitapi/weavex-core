@@ -19,8 +19,7 @@ _GLOBAL_LOGGER = None
 
 
 # trying with the _GLOBAL_LOGGER to see how much overhead it adds
-def get_logger(project_id=None, env=None):
+def get_logger(project_id=None, env=None, account_id=None):
     pid = project_id or os.getenv("WEAVEX_PROJECT_ID", "weavex-475116")
     logger_type = env or os.getenv("WEAVEX_LOGGER_TYPE", "PUBSUB")
-    print(project_id, pid)
-    return WeavexServicesLogger(project_id=pid, logger_type=logger_type)
+    return WeavexServicesLogger(project_id=pid, logger_type=logger_type, account_id=account_id)
