@@ -10,7 +10,7 @@ class WeavexServicesLogger:
     Routes logs to the correct BigQuery tables based on the method called.
     """
 
-    def __init__(self, project_id: str = None, logger_type: str = "STDOUT", gcp_project_id: str = None):
+    def __init__(self, project_id: str = None, logger_type: str = "STDOUT", gcp_project_id: str = None, account_id: str = None):
         self.project_id = project_id or os.getenv("WEAVEX_PROJECT_ID")
         self.gcp_project_id = gcp_project_id or os.getenv("GCP_PROJECT_ID")
         self.logger_type = logger_type
@@ -29,7 +29,8 @@ class WeavexServicesLogger:
             self.logger = PubSubLogger(
                 topic_id=topic_id,
                 project_id=self.project_id,
-                gcp_project_id=self.gcp_project_id
+                gcp_project_id=self.gcp_project_id,
+                account_id=account_id
             )
         else:
             # Fallback to standard output for local development
