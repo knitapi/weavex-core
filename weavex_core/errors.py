@@ -15,13 +15,19 @@ class WeavexError(Exception):
         "payload_rejected",
         "schema_mismatch",
         "field_type_mismatch",
-        "connector_server_error"
+        "connector_server_error",
     }
     RETRYABLE_ERRORS = {"rate_limited", "timeout", "connector_server_error"}
     NON_FIXABLE_ERRORS = {"auth_failure", "permission_denied"}
 
-    def __init__(self, error_type: str, connector: str, step: str,
-                 detail: dict = None, raw_error: str = None):
+    def __init__(
+        self,
+        error_type: str,
+        connector: str,
+        step: str,
+        detail: dict = None,
+        raw_error: str = None,
+    ):
         self.error_type = error_type
         self.connector = connector
         self.step = step
@@ -46,21 +52,21 @@ class WeavexError(Exception):
         return json.dumps(self.to_dict())
 
     @classmethod
-    def from_exception(cls, e: Exception, connector: str, step: str,
-                       current_operation: str = None) -> "WeavexError":
-        import requests
-
+    def from_exception(
+        cls, e: Exception, connector: str, step: str, current_operation: str = None
+    ) -> "WeavexError":
         op = current_operation or step
 
         if isinstance(e, WeavexError):
             return e
 
-        if isinstance(e, requests.HTTPError):
-            status = e.response.status_code
+        response = getattr(e, "response", None)
+        if response is not None and hasattr(response, "status_code"):
+            status = response.status_code
             try:
-                api_body = e.response.json()
+                api_body = response.json()
             except Exception:
-                api_body = {"raw": e.response.text}
+                api_body = {"raw": response.text}
             return cls(
                 error_type=cls._classify_http(status),
                 connector=connector,
