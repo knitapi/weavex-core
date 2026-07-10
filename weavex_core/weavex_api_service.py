@@ -23,20 +23,24 @@ class WeavexAPIService:
         }
         return base_url, headers
 
-    def _post(self, path: str, payload: dict, max_attempts: int = 2) -> requests.Response:
+    def _post(self, path: str, payload: dict, max_attempts: int = 3) -> requests.Response:
         """
-        Shared POST helper with explicit timeouts, before/after timing logs,
-        and a single retry on read-timeout.
+        Shared POST helper with a shorter per-attempt timeout, multiple retries,
+        and a small backoff between attempts.
 
-        Root cause context: weavex-cerebro occasionally never logs receiving
-        a request at all (confirmed via server-side instrumentation), while
-        this client cleanly hits its 60s read timeout. That signature is
-        consistent with a stale/dead pooled connection being reused for the
-        request rather than a slow handler on the server side (which we've
-        ruled out — every AppDBFactory call on that side is confirmed
-        non-blocking). A fresh connection on retry should succeed quickly
-        if that's the cause; if retries ALSO time out, that rules this out
-        and points elsewhere.
+        Root cause context: weavex-cerebro occasionally never logs receiving a
+        request at all (confirmed via server-side instrumentation), while this
+        client cleanly hits its read timeout. Every AppDBFactory call on the
+        server side is confirmed non-blocking (uses .await(), not .get()), so
+        this isn't application-level blocking — it's most consistent with
+        transient network flakiness between Cloud Run services (e.g. a dropped
+        packet or brief routing hiccup at the GFE layer). A retry with a fresh
+        connection has reliably resolved it in practice.
+
+        Using a shorter read timeout (20s) with more attempts (3) instead of a
+        single long timeout (60s) with fewer attempts caps the worst case at
+        roughly the same total wait, but resolves a transient stall in ~20s
+        instead of ~60s whenever the very next attempt succeeds.
         """
         url = f"{self._base_url}{path}"
 
@@ -45,7 +49,7 @@ class WeavexAPIService:
             t0 = time.time()
             print(f"[{self._execution_id}] SENDING POST {url} at {t0} | attempt={attempt}/{max_attempts}", flush=True)
             try:
-                resp = requests.post(url, headers=self._headers, json=payload, timeout=(10, 60))
+                resp = requests.post(url, headers=self._headers, json=payload, timeout=(5, 20))
                 t1 = time.time()
                 print(
                     f"[{self._execution_id}] RECEIVED response from {url} | status={resp.status_code} "
@@ -65,10 +69,11 @@ class WeavexAPIService:
                 )
                 if not will_retry:
                     raise
+                time.sleep(0.5 * attempt)  # 0.5s, then 1s backoff before next attempt
 
             except requests.exceptions.RequestException as e:
                 # Non-timeout errors (connection reset, DNS failure, etc.) are not retried
-                # here — they usually indicate a real problem rather than a stale connection.
+                # here — they usually indicate a real problem rather than transient flakiness.
                 t1 = time.time()
                 print(
                     f"[{self._execution_id}] ERROR calling {url} | elapsed={int((t1 - t0) * 1000)}ms | error={e}",
