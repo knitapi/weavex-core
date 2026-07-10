@@ -23,31 +23,63 @@ class WeavexAPIService:
         }
         return base_url, headers
 
-    def _post(self, path: str, payload: dict) -> requests.Response:
+    def _post(self, path: str, payload: dict, max_attempts: int = 2) -> requests.Response:
         """
-        Shared POST helper with explicit timeouts and before/after timing logs.
-        timeout=(connect_timeout, read_timeout) — fails fast instead of hanging
-        indefinitely if weavex-cerebro is slow or unreachable.
+        Shared POST helper with explicit timeouts, before/after timing logs,
+        and a single retry on read-timeout.
+
+        Root cause context: weavex-cerebro occasionally never logs receiving
+        a request at all (confirmed via server-side instrumentation), while
+        this client cleanly hits its 60s read timeout. That signature is
+        consistent with a stale/dead pooled connection being reused for the
+        request rather than a slow handler on the server side (which we've
+        ruled out — every AppDBFactory call on that side is confirmed
+        non-blocking). A fresh connection on retry should succeed quickly
+        if that's the cause; if retries ALSO time out, that rules this out
+        and points elsewhere.
         """
         url = f"{self._base_url}{path}"
-        t0 = time.time()
-        print(f"[{self._execution_id}] SENDING POST {url} at {t0}", flush=True)
-        try:
-            resp = requests.post(url, headers=self._headers, json=payload, timeout=(10, 60))
-        except requests.exceptions.Timeout:
-            t1 = time.time()
-            print(f"[{self._execution_id}] TIMEOUT calling {url} | elapsed={int((t1 - t0) * 1000)}ms", flush=True)
-            raise
-        except requests.exceptions.RequestException as e:
-            t1 = time.time()
-            print(f"[{self._execution_id}] ERROR calling {url} | elapsed={int((t1 - t0) * 1000)}ms | error={e}", flush=True)
-            raise
-        t1 = time.time()
-        print(
-            f"[{self._execution_id}] RECEIVED response from {url} | status={resp.status_code} | duration={int((t1 - t0) * 1000)}ms",
-            flush=True,
-        )
-        return resp
+
+        last_exception: Optional[Exception] = None
+        for attempt in range(1, max_attempts + 1):
+            t0 = time.time()
+            print(f"[{self._execution_id}] SENDING POST {url} at {t0} | attempt={attempt}/{max_attempts}", flush=True)
+            try:
+                resp = requests.post(url, headers=self._headers, json=payload, timeout=(10, 60))
+                t1 = time.time()
+                print(
+                    f"[{self._execution_id}] RECEIVED response from {url} | status={resp.status_code} "
+                    f"| duration={int((t1 - t0) * 1000)}ms | attempt={attempt}/{max_attempts}",
+                    flush=True,
+                )
+                return resp
+
+            except requests.exceptions.Timeout as e:
+                last_exception = e
+                t1 = time.time()
+                will_retry = attempt < max_attempts
+                print(
+                    f"[{self._execution_id}] TIMEOUT calling {url} | elapsed={int((t1 - t0) * 1000)}ms "
+                    f"| attempt={attempt}/{max_attempts} | will_retry={will_retry}",
+                    flush=True,
+                )
+                if not will_retry:
+                    raise
+
+            except requests.exceptions.RequestException as e:
+                # Non-timeout errors (connection reset, DNS failure, etc.) are not retried
+                # here — they usually indicate a real problem rather than a stale connection.
+                t1 = time.time()
+                print(
+                    f"[{self._execution_id}] ERROR calling {url} | elapsed={int((t1 - t0) * 1000)}ms | error={e}",
+                    flush=True,
+                )
+                raise
+
+        # Should be unreachable, but keeps type checkers happy and fails loudly if hit.
+        if last_exception:
+            raise last_exception
+        raise RuntimeError(f"_post exhausted retries without a response or exception for {url}")
 
     def init_checkpoint(
         self,
