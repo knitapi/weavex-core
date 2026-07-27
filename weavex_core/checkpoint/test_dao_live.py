@@ -7,7 +7,7 @@ creates a throwaway checkpoint document, and deletes it again.
 
 Configure the two project ids below, then run:
 
-    python -m weavex_core.test_dao_live
+    python -m weavex_core.checkpoint.test_dao_live
 
 TESTING_PROJECT_ID must be a project currently in TESTING status.
 NON_TESTING_PROJECT_ID must be a project in any other status (LIVE, DRAFT, ...).

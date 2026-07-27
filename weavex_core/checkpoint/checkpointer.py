@@ -4,8 +4,8 @@ import uuid
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from .dao import get_dao
-from .errors import ProjectNotFoundError
+from ..dao import get_dao
+from ..errors import ProjectNotFoundError
 from .events import get_event_publisher
 
 _TESTING_STATUS = "TESTING"

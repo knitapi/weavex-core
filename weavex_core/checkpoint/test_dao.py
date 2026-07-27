@@ -6,17 +6,16 @@ FakeDao for the real Firestore implementation and asserts the orchestration
 logic in checkpoint.py (TESTING gate, JSON stringification, step_context
 parsing, response shape, and every is_complete branch).
 
-Run:  python -m weavex_core.test_dao
+Run:  python -m weavex_core.checkpoint.test_dao
 """
 
 import json
 from typing import Any, Dict, Iterable, Optional, Tuple
 
-from weavex_core import checkpoint as checkpoint_module
-from weavex_core.checkpoint import WorkflowCheckpointer
+from weavex_core.checkpoint import EventPublisher, WorkflowCheckpointer
+from weavex_core.checkpoint import checkpointer as checkpoint_module
 from weavex_core.dao import WeavexDao
 from weavex_core.errors import ProjectNotFoundError
-from weavex_core.events import EventPublisher
 
 
 class FakeDao(WeavexDao):

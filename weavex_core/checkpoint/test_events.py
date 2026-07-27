@@ -9,7 +9,7 @@ Needs no GCP credentials and makes no network calls. Two halves:
   * PubSubEventPublisher with an injected FakeClient — asserts topic resolution,
     encoding, and the ordering-key pause/resume handling.
 
-Run:  python -m weavex_core.test_events
+Run:  python -m weavex_core.checkpoint.test_events
 """
 
 import json
@@ -17,11 +17,14 @@ import os
 import threading
 from typing import Optional
 
-from weavex_core import checkpoint as checkpoint_module
-from weavex_core.checkpoint import WorkflowCheckpointer
+from weavex_core.checkpoint import (
+    EventPublisher,
+    PubSubEventPublisher,
+    WorkflowCheckpointer,
+)
+from weavex_core.checkpoint import checkpointer as checkpoint_module
+from weavex_core.checkpoint.test_dao import FakeDao
 from weavex_core.errors import ProjectNotFoundError
-from weavex_core.events import EventPublisher, PubSubEventPublisher
-from weavex_core.test_dao import FakeDao
 
 
 class FakeEventPublisher(EventPublisher):

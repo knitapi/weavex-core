@@ -15,17 +15,20 @@ from .api import make_passthrough_call
 # 5. Expose Structured Error
 from .errors import WeavexError, ProjectNotFoundError
 
-# 6. Expose Checkpoint
-from .checkpoint import StepCheckpoint, WorkflowCheckpointer
-
-# 7. Expose Weavex API Service
-from .weavex_api_service import WeavexAPIService
-
-# 8. Expose App DB DAO
+# 6. Expose App DB DAO
 from .dao import get_dao, WeavexDao, FirestoreDb
 
-# 9. Expose Event Publisher
-from .events import get_event_publisher, EventPublisher, PubSubEventPublisher
+# 7. Expose Checkpointing (checkpointer + its event publisher)
+from .checkpoint import (
+    StepCheckpoint,
+    WorkflowCheckpointer,
+    get_event_publisher,
+    EventPublisher,
+    PubSubEventPublisher,
+)
+
+# 8. Expose Weavex API Service
+from .weavex_api_service import WeavexAPIService
 
 # Expose Knit SDKs
 from . import knit_consumer

@@ -12,7 +12,7 @@ published to a topic with zero subscriptions are discarded and unrecoverable.
 
 Configure the ids below, then run:
 
-    python -m weavex_core.test_events_live
+    python -m weavex_core.checkpoint.test_events_live
 
 TESTING_PROJECT_ID must be a project currently in TESTING status.
 """
@@ -24,9 +24,12 @@ import time
 from google.api_core import exceptions as gcp_exceptions
 from google.cloud import pubsub_v1
 
-from weavex_core.checkpoint import WorkflowCheckpointer
+from weavex_core.checkpoint import (
+    PubSubEventPublisher,
+    WorkflowCheckpointer,
+    get_event_publisher,
+)
 from weavex_core.dao import CHECKPOINTS_COLLECTION, get_dao
-from weavex_core.events import PubSubEventPublisher, get_event_publisher
 
 # --- configure these -------------------------------------------------------
 TESTING_PROJECT_ID = ""
