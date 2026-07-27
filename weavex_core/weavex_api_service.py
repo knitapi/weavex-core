@@ -7,6 +7,15 @@ logger = logging.getLogger(__name__)
 
 
 class WeavexAPIService:
+    """
+    HTTP client for the weavex-cerebro backend.
+
+    NOTE: the checkpoint.* methods are no longer used by WorkflowCheckpointer —
+    reads go to Firestore through dao.py and writes are published to Pub/Sub via
+    events.py. They are kept for parity testing against the Kotlin routes and
+    should be removed once those routes retire.
+    """
+
     def __init__(self, context: dict):
         self._base_url, self._headers = self.get_weavex_config(context)
         # Kept for log correlation across services (matches execution_id used
@@ -143,33 +152,3 @@ class WeavexAPIService:
         }
         resp = self._post("/checkpoint.clear", payload)
         resp.raise_for_status()
-
-    # ── Deprecated ────────────────────────────────────────────────────────────
-
-    # Deprecated: use set_result_checkpoint() instead.
-    def set_checkpoint(
-        self,
-        project_id: str,
-        execution_id: str,
-        step_id: str,
-        checkpoint: dict,
-        step_context: dict = None,
-    ) -> None:
-        """Deprecated: use set_result_checkpoint() instead."""
-        payload = {
-            "projectId": project_id,
-            "executionId": execution_id,
-            "stepId": step_id,
-            "checkpoint": checkpoint,
-        }
-        if step_context:
-            payload["stepContext"] = step_context
-        resp = self._post("/checkpoint.set", payload)
-        resp.raise_for_status()
-
-    # Deprecated: use get_result_checkpoint() instead.
-    def get_checkpoint(
-        self, project_id: str, execution_id: str, step_id: str
-    ) -> Optional[dict]:
-        """Deprecated: use get_result_checkpoint() instead."""
-        return self.get_result_checkpoint(project_id, execution_id, step_id)

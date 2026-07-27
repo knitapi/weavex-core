@@ -13,13 +13,19 @@ from .state import get_sync_state
 from .api import make_passthrough_call
 
 # 5. Expose Structured Error
-from .errors import WeavexError
+from .errors import WeavexError, ProjectNotFoundError
 
 # 6. Expose Checkpoint
 from .checkpoint import StepCheckpoint, WorkflowCheckpointer
 
 # 7. Expose Weavex API Service
 from .weavex_api_service import WeavexAPIService
+
+# 8. Expose App DB DAO
+from .dao import get_dao, WeavexDao, FirestoreDb
+
+# 9. Expose Event Publisher
+from .events import get_event_publisher, EventPublisher, PubSubEventPublisher
 
 # Expose Knit SDKs
 from . import knit_consumer
@@ -33,9 +39,16 @@ __all__ = [
     "get_sync_state",
     "make_passthrough_call",
     "WeavexError",
+    "ProjectNotFoundError",
     "StepCheckpoint",
     "WorkflowCheckpointer",
     "WeavexAPIService",
+    "get_dao",
+    "WeavexDao",
+    "FirestoreDb",
+    "get_event_publisher",
+    "EventPublisher",
+    "PubSubEventPublisher",
     "knit_consumer",
     "knit_mail",
     "knit_sync",

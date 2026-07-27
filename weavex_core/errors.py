@@ -2,6 +2,10 @@ import json
 import traceback
 
 
+class ProjectNotFoundError(Exception):
+    """Raised when a projectId has no corresponding project document."""
+
+
 class WeavexError(Exception):
     """
     Structured error that propagates back to the Kotlin fix workflow.
