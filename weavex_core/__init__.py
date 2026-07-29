@@ -12,6 +12,13 @@ from .state import get_sync_state
 # 4. Expose API Proxy Helper
 from .api import make_passthrough_call
 
+from .api_execution_facade import ApiExecutionFacade, KbOrigin
+
+# 5. Expose Skill Executors
+from .execute_api import execute_api
+from .execute_dw import execute_dw_query, execute_dw_write, DWQueryResult, DWWriteResult
+from .llm import complete, complete_one_shot, LLMResponse
+
 # Expose Knit SDKs
 from . import knit_consumer
 from . import knit_mail
