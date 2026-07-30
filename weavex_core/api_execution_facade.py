@@ -4,7 +4,7 @@
 # Routes to skill executor (execute_api) or Knit passthrough (api)
 # based on the integration_id prefix — no kb_origin needed by the coder.
 #
-# Skill integration IDs are prefixed with "wvx_skl_".
+# Skill integration IDs are prefixed with "wvx_sk_".
 # Everything else routes to Knit passthrough.
 #
 # Usage:
@@ -49,12 +49,11 @@ class ApiExecutionFacade:
         """
         Unified entry point for all API execution.
         Routes automatically based on integration_id prefix:
-          - "wvx_skl_*" → skill executor (execute_api)
+          - "wvx_sk_*" → skill executor (execute_api)
           - anything else → Knit passthrough (make_passthrough_call_normalised)
 
         Args:
             context:        Temporal activity context
-            app_id:         Skill/app identifier (e.g. "bamboohr")
             integration_id: Connected integration identifier — prefix determines routing
             method:         HTTP method (GET, POST, PUT, PATCH, DELETE)
             path:           Relative path including query string

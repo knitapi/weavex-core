@@ -12,7 +12,7 @@ from .state import get_sync_state
 # 4. Expose API Proxy Helper
 from .api import make_passthrough_call
 
-from .api_execution_facade import ApiExecutionFacade, KbOrigin
+from .api_execution_facade import ApiExecutionFacade
 
 # 5. Expose Skill Executors
 from .execute_api import execute_api

@@ -17,8 +17,6 @@
 
 import os
 import time
-import hmac
-import hashlib
 import base64
 import json
 import threading
@@ -45,11 +43,10 @@ class ApiResponse:
 
 @dataclass
 class RetryConfig:
-    # HTTP status codes that trigger a retry
-    retry_on:        list[int] = field(default_factory=lambda: [429, 500, 502, 503, 504])
-    max_retries:     int       = 3
-    backoff_seconds: float     = 2.0     # base backoff, doubles each retry
-    respect_retry_after: bool  = True    # honour Retry-After header on 429
+    retry_on:            list[int] = field(default_factory=lambda: [429, 500, 502, 503, 504])
+    max_retries:         int       = 3
+    backoff_seconds:     float     = 2.0
+    respect_retry_after: bool      = True
 
 
 DEFAULT_RETRY = RetryConfig()
@@ -59,21 +56,15 @@ DEFAULT_RETRY = RetryConfig()
 
 @dataclass
 class _CachedCredentials:
-    credentials:  dict
-    fetched_at:   float          # epoch seconds
+    credentials: dict
+    fetched_at:  float
 
 
 class _CredentialCache:
-    """
-    In-memory cache of credentials keyed by integration_id.
-    Lives for the lifetime of the Temporal worker process.
-    Invalidated on auth errors or explicit eviction.
-    """
-
     def __init__(self, ttl_seconds: int = 300):
-        self._cache:  dict[str, _CachedCredentials] = {}
-        self._lock:   threading.Lock                 = threading.Lock()
-        self._ttl:    int                            = ttl_seconds
+        self._cache: dict[str, _CachedCredentials] = {}
+        self._lock:  threading.Lock                 = threading.Lock()
+        self._ttl:   int                            = ttl_seconds
 
     def get(self, integration_id: str) -> Optional[dict]:
         with self._lock:
@@ -97,7 +88,6 @@ class _CredentialCache:
             self._cache.pop(integration_id, None)
 
 
-# singleton cache — shared across all execute_api calls in this process
 _cache = _CredentialCache(ttl_seconds=300)
 
 
@@ -106,21 +96,21 @@ _cache = _CredentialCache(ttl_seconds=300)
 def _get_connect_server_url() -> str:
     url = os.environ.get("WEAVEX_CONNECT_SERVER_URL")
     if not url:
-        raise RuntimeError(
-            "WEAVEX_CONNECT_SERVER_URL env var not set"
-        )
+        raise RuntimeError("WEAVEX_CONNECT_SERVER_URL env var not set")
     return url.rstrip("/")
 
 
 def _fetch_credentials(integration_id: str) -> dict:
     """
     Fetches credentials from the connect server vault.
-    Error specs and rate limit config are bundled into the response
-    and cached alongside credentials — no extra HTTP call needed.
+    Error specs and rate limit config are bundled into the response.
     """
     url = f"{_get_connect_server_url()}/api/vault/{integration_id}"
+    print(f"[execute_api] fetching credentials for {integration_id} from {url}", flush=True)
+
     with httpx.Client(timeout=10) as client:
         response = client.get(url)
+
     if response.status_code == 404:
         raise RuntimeError(
             f"No credentials found for integration '{integration_id}' — "
@@ -131,42 +121,44 @@ def _fetch_credentials(integration_id: str) -> dict:
             f"Failed to fetch credentials for '{integration_id}': "
             f"{response.status_code}"
         )
-    data = response.json()
-    # error specs bundled into vault response — cached with credentials
-    # connect server reads from error_handling/data Firestore sub-collection
+
+    data        = response.json()
     credentials = data.get("credentials", data)
     credentials["__errorSpecs"]    = data.get("errorSpecs", [])
     credentials["__rateLimitSpec"] = data.get("rateLimitSpec", {})
+
+    print(
+        f"[execute_api] credentials fetched for {integration_id}: "
+        f"authType={credentials.get('authType')} "
+        f"hasBaseUrl={bool(credentials.get('baseUrl'))} "
+        f"errorSpecs={len(credentials['__errorSpecs'])} "
+        f"hasRateLimit={bool(credentials['__rateLimitSpec'])}",
+        flush=True
+    )
     return credentials
 
 
 def _update_credentials(integration_id: str, credentials: dict) -> None:
-    """Updates credentials in the connect server vault (e.g. after token refresh)."""
     url = f"{_get_connect_server_url()}/api/vault/{integration_id}"
     with httpx.Client(timeout=10) as client:
         response = client.put(url, json=credentials)
     if response.status_code not in (200, 204):
-        # non-fatal — log but don't fail the request
         print(
             f"WARN: failed to update credentials for '{integration_id}': "
-            f"{response.status_code}"
+            f"{response.status_code}",
+            flush=True
         )
 
 
-
 def _build_retry_config(error_specs: dict) -> RetryConfig:
-    """
-    Builds a RetryConfig from skill-level error specs.
-    Falls back to DEFAULT_RETRY if no specs available.
-    """
-    specs        = error_specs.get("errorSpecs", [])
-    rate_limit   = error_specs.get("rateLimitSpec", {})
+    specs      = error_specs.get("errorSpecs", [])
+    rate_limit = error_specs.get("rateLimitSpec", {})
 
     if not specs:
         return DEFAULT_RETRY
 
-    retryable_codes = [s["statusCode"] for s in specs if s.get("retryable", False)]
-    backoff_ms      = next(
+    retryable_codes    = [s["statusCode"] for s in specs if s.get("retryable", False)]
+    backoff_ms         = next(
         (s.get("backoffMs") for s in specs if s.get("statusCode") == 429 and s.get("backoffMs")),
         None
     )
@@ -179,14 +171,12 @@ def _build_retry_config(error_specs: dict) -> RetryConfig:
         respect_retry_after  = bool(retry_after_header)
     )
 
+
 def _get_credentials(integration_id: str, force_refresh: bool = False) -> dict:
-    """
-    Returns credentials for an integration.
-    Uses cache unless force_refresh=True.
-    """
     if not force_refresh:
         cached = _cache.get(integration_id)
         if cached:
+            print(f"[execute_api] using cached credentials for {integration_id}", flush=True)
             return cached
 
     credentials = _fetch_credentials(integration_id)
@@ -212,14 +202,17 @@ def _build_auth_headers(credentials: dict) -> dict:
     elif auth_type == "apikey":
         header_name = credentials.get("headerName", "X-API-Key")
         param_name  = credentials.get("paramName")
-        # support both "apiKey" (AI providers) and "token" (SaaS)
         key         = credentials.get("apiKey") or credentials.get("token", "")
         if param_name:
-            return {}   # param-based — handled in _build_auth_params
+            return {}
         return {header_name: key}
 
+    elif auth_type == "api_key":
+        # stored as api_key from validate_auth.py — treat as Bearer
+        key = credentials.get("apiKey") or credentials.get("token", "")
+        return {"Authorization": f"Bearer {key}"}
+
     elif auth_type == "custom":
-        # validate_auth.py stores pre-built headers in credentials["headers"]
         return credentials.get("headers", {})
 
     return {}
@@ -236,11 +229,6 @@ def _build_auth_params(credentials: dict) -> dict:
 # ── OAuth2 token refresh ──────────────────────────────────────────────────────
 
 def _refresh_oauth_token(integration_id: str, credentials: dict) -> dict:
-    """
-    Refreshes an expired OAuth2 access token.
-    Updates the vault and cache with new tokens.
-    Returns updated credentials.
-    """
     refresh_token = credentials.get("refreshToken")
     token_url     = credentials.get("tokenUrl")
     client_id     = credentials.get("clientId")
@@ -252,12 +240,12 @@ def _refresh_oauth_token(integration_id: str, credentials: dict) -> dict:
             f"missing refreshToken, tokenUrl, clientId, or clientSecret"
         )
 
-    print(f"[execute_api] refreshing OAuth token for {integration_id}")
+    print(f"[execute_api] refreshing OAuth token for {integration_id}", flush=True)
 
     with httpx.Client(timeout=15) as client:
         response = client.post(
             token_url,
-            data = {
+            data={
                 "grant_type":    "refresh_token",
                 "refresh_token": refresh_token,
                 "client_id":     client_id,
@@ -271,21 +259,17 @@ def _refresh_oauth_token(integration_id: str, credentials: dict) -> dict:
             f"{response.status_code} — {response.text[:200]}"
         )
 
-    tokens = response.json()
-
-    # update credentials with new tokens
+    tokens  = response.json()
     updated = {
         **credentials,
         "accessToken":  tokens["access_token"],
-        "refreshToken": tokens.get("refresh_token", refresh_token),  # some providers don't rotate
+        "refreshToken": tokens.get("refresh_token", refresh_token),
     }
     if "expires_in" in tokens:
         updated["expiresAt"] = int(time.time() * 1000) + tokens["expires_in"] * 1000
 
-    # persist to vault and update cache
     _update_credentials(integration_id, updated)
     _cache.set(integration_id, updated)
-
     return updated
 
 
@@ -297,8 +281,12 @@ def _build_url(credentials: dict, path: str) -> str:
         raise RuntimeError(
             "Credentials missing baseUrl — check validate_auth.py stores it correctly"
         )
-    # resolve {param} placeholders from credentials.params
     params = credentials.get("params", {})
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except Exception:
+            params = {}
     for key, value in params.items():
         path = path.replace(f"{{{key}}}", str(value))
     return base_url + "/" + path.lstrip("/")
@@ -319,33 +307,17 @@ def execute_api(
 ) -> ApiResponse:
     """
     Executes an API call for a connected integration.
-
-    Args:
-        context:        Temporal activity context — passed as-is, not used internally
-        integration_id: Integration identifier from the connect flow
-        method:         HTTP method (GET, POST, PUT, PATCH, DELETE)
-        path:           Relative path including query string
-                        Supports {param} placeholders resolved from credentials.params
-        headers:        Additional headers (merged with auth headers)
-        body:           Request body — dict (serialised to JSON) or string
-        content_type:   Content-Type header (default: application/json)
-        timeout:        Request timeout in seconds (default: 30)
-        retry:          Retry configuration (default: RetryConfig())
-
-    Returns:
-        ApiResponse with status_code, body, headers
-
-    Raises:
-        RuntimeError: on unrecoverable errors (missing credentials, auth failure)
     """
-    credentials    = _get_credentials(integration_id)
-    error_specs    = credentials.get("__errorSpecs", [])
-    rate_limit     = credentials.get("__rateLimitSpec", {})
-    skill_specs    = {"errorSpecs": error_specs, "rateLimitSpec": rate_limit}
-    retry          = _build_retry_config(skill_specs) if error_specs else retry
+    print(f"[execute_api] START {method} {path} integration={integration_id}", flush=True)
 
-    attempt     = 0
-    last_error  = None
+    credentials = _get_credentials(integration_id)
+    error_specs = credentials.get("__errorSpecs", [])
+    rate_limit  = credentials.get("__rateLimitSpec", {})
+    skill_specs = {"errorSpecs": error_specs, "rateLimitSpec": rate_limit}
+    retry       = _build_retry_config(skill_specs) if error_specs else retry
+
+    attempt    = 0
+    last_error = None
 
     while attempt <= retry.max_retries:
         try:
@@ -361,23 +333,29 @@ def execute_api(
             )
         except httpx.TimeoutException:
             last_error = f"Request timed out after {timeout}s"
-            attempt   += 1
+            print(f"[execute_api] TIMEOUT attempt={attempt+1} {method} {path}", flush=True)
+            attempt += 1
             if attempt <= retry.max_retries:
                 _backoff(attempt, retry.backoff_seconds)
             continue
         except httpx.RequestError as e:
             last_error = f"Network error: {e}"
-            attempt   += 1
+            print(f"[execute_api] NETWORK ERROR attempt={attempt+1} {method} {path}: {e}", flush=True)
+            attempt += 1
             if attempt <= retry.max_retries:
                 _backoff(attempt, retry.backoff_seconds)
             continue
 
-        # ── handle auth errors ────────────────────────────────────────────────
+        print(
+            f"[execute_api] RESPONSE {response.status_code} "
+            f"{method} {path} attempt={attempt+1}",
+            flush=True
+        )
 
+        # ── handle auth errors ────────────────────────────────────────────────
         if response.status_code == 401:
             if attempt == 0 and credentials.get("authType") == "oauth2":
-                # try token refresh once
-                print(f"[execute_api] 401 on {integration_id} — attempting token refresh")
+                print(f"[execute_api] 401 on {integration_id} — attempting token refresh", flush=True)
                 try:
                     credentials = _refresh_oauth_token(integration_id, credentials)
                     attempt    += 1
@@ -387,8 +365,7 @@ def execute_api(
                         f"Auth failed for '{integration_id}' and token refresh failed: {e}"
                     )
             elif attempt == 0:
-                # non-OAuth 401 — evict cache and refetch credentials once
-                print(f"[execute_api] 401 on {integration_id} — refetching credentials")
+                print(f"[execute_api] 401 on {integration_id} — refetching credentials", flush=True)
                 _cache.evict(integration_id)
                 try:
                     credentials = _get_credentials(integration_id, force_refresh=True)
@@ -402,33 +379,42 @@ def execute_api(
             )
 
         # ── handle retryable errors ───────────────────────────────────────────
-
         if response.status_code in retry.retry_on and attempt < retry.max_retries:
             wait = _get_wait_time(response, attempt, retry)
             print(
-                f"[execute_api] {response.status_code} on attempt {attempt + 1} "
-                f"for {integration_id} — retrying in {wait}s"
+                f"[execute_api] RETRY {response.status_code} attempt={attempt+1} "
+                f"for {integration_id} — waiting {wait}s",
+                flush=True
             )
             time.sleep(wait)
             attempt += 1
             continue
 
-        # ── non-retryable error — use error spec meaning if available ─────────
+        # ── non-retryable error — log with error spec meaning if available ────
         if not response.ok:
-            specs = error_specs
-            spec  = next((s for s in specs if s["statusCode"] == response.status_code), None)
+            spec = next(
+                (s for s in error_specs if s["statusCode"] == response.status_code),
+                None
+            )
             if spec and not spec.get("retryable", True):
                 error_field = spec.get("errorField")
                 if error_field and isinstance(response.body, dict):
-                    # extract error message from response body using dot-notation path
                     msg = response.body
                     for key in error_field.split("."):
                         msg = msg.get(key, msg) if isinstance(msg, dict) else msg
-                    print(f"[execute_api] non-retryable {response.status_code} for {integration_id}: {msg}")
+                    print(
+                        f"[execute_api] non-retryable {response.status_code} "
+                        f"for {integration_id}: {msg}",
+                        flush=True
+                    )
                 else:
-                    print(f"[execute_api] non-retryable {response.status_code} for {integration_id}: {spec['meaning']}")
+                    meaning = spec.get("meaning", "Unknown error")
+                    print(
+                        f"[execute_api] non-retryable {response.status_code} "
+                        f"for {integration_id}: {meaning}",
+                        flush=True
+                    )
 
-        # ── success or exhausted retries ──────────────────────────────────────
         return response
 
     raise RuntimeError(
@@ -447,23 +433,33 @@ def _execute_once(
         content_type:   str,
         timeout:        int
 ) -> ApiResponse:
-    """Single HTTP request — no retry logic."""
-    url         = _build_url(credentials, path)
+    url          = _build_url(credentials, path)
     auth_headers = _build_auth_headers(credentials)
     auth_params  = _build_auth_params(credentials)
 
-    # merge headers — auth headers first, caller can override
     all_headers = {**auth_headers, **extra_headers}
     if body is not None:
         all_headers["Content-Type"] = content_type
 
-    # build request body
+    print(
+        f"[execute_api] REQUEST {method} {url} "
+        f"authType={credentials.get('authType')} "
+        f"hasBody={body is not None} "
+        f"headers={list(all_headers.keys())}",
+        flush=True
+    )
+
     request_body = None
     if body is not None:
-        if isinstance(body, dict) and content_type == "application/json":
+        if isinstance(body, dict) and content_type == "application/x-www-form-urlencoded":
+            from urllib.parse import urlencode
+            request_body = urlencode(body)   # ← "email=test%40weavex.dev&name=Weavex+Test"
+        elif isinstance(body, dict) and content_type == "application/json":
             request_body = json.dumps(body)
         else:
             request_body = body
+
+    print(f"[execute_api] content_type={content_type} body_type={type(request_body)} body={str(request_body)[:100]}", flush=True)
 
     with httpx.Client(timeout=timeout) as client:
         response = client.request(
@@ -474,9 +470,8 @@ def _execute_once(
             content = request_body
         )
 
-    # parse body
     parsed_body = _parse_body(response)
-
+    print(response.status_code, flush=True)
     return ApiResponse(
         status_code = response.status_code,
         body        = parsed_body,
@@ -498,17 +493,19 @@ def _parse_body(response: httpx.Response) -> Any:
 
 def _get_wait_time(response: ApiResponse, attempt: int, retry: RetryConfig) -> float:
     if retry.respect_retry_after:
-        retry_after = (response.headers.get("retry-after")
-                       or response.headers.get("Retry-After"))
+        retry_after = (
+                response.headers.get("retry-after") or
+                response.headers.get("Retry-After")
+        )
         if retry_after:
             try:
                 return float(retry_after)
             except ValueError:
                 pass
-    # exponential backoff: 2s, 4s, 8s...
     return retry.backoff_seconds * (2 ** attempt)
 
 
 def _backoff(attempt: int, base: float) -> None:
     wait = base * (2 ** (attempt - 1))
+    print(f"[execute_api] backoff {wait}s before attempt {attempt+1}", flush=True)
     time.sleep(wait)

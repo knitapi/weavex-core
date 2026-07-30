@@ -2,7 +2,7 @@ import json
 import requests
 from dataclasses import dataclass
 from typing import Optional, Any, Dict
-from execute_api import ApiResponse
+from .execute_api import ApiResponse
 
 @dataclass
 class VendorResponse:

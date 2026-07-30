@@ -3,7 +3,7 @@ from weavex_core.api import make_passthrough_call
 
 # 1. Configuration: Replace these with your actual Knit credentials
 MY_CONTEXT = {
-    "knit_api_key": "4450b29641b0702f8d65390fdf21eb0554563cc1bcbc514611c271880f951d9f",
+    "knit_api_key": "55a40c91aee261488191a92a37d5904daef8b9bf369778dd5b2ff9f57a0a6d17",
     "execution_id": "manual_test_001",
     "knit_env": "production" # or "production"
 }
@@ -14,25 +14,25 @@ def run_test_call():
     try:
         # 2. Execute the call
         # Example: Calling a hypothetical 'GET /users' on the vendor's API
-        response = make_passthrough_call(
-            context=MY_CONTEXT,
-            integration_id="mg_BMsnPnZR8EIVkls7YBjs1E",
-            method="POST",
-            path="/v3/objects/contacts/search",
-            headers={"Content-Type": "application/json"},
-            body={
-                "filterGroups": [{
-                    "filters": [{
-                        "propertyName": "email",
-                        "operator": "IN",
-                        "values": ["kunal@getknit.dev"]
-                    }]
-                }],
-                "properties": ["firstname", "lastname", "mobilephone", "email"],
-                "limit": 100
-            }
-
-        )
+        # response = make_passthrough_call(
+        #     context=MY_CONTEXT,
+        #     integration_id="mg_BMsnPnZR8EIVkls7YBjs1E",
+        #     method="POST",
+        #     path="/v3/objects/contacts/search",
+        #     headers={"Content-Type": "application/json"},
+        #     body={
+        #         "filterGroups": [{
+        #             "filters": [{
+        #                 "propertyName": "email",
+        #                 "operator": "IN",
+        #                 "values": ["kunal@getknit.dev"]
+        #             }]
+        #         }],
+        #         "properties": ["firstname", "lastname", "mobilephone", "email"],
+        #         "limit": 100
+        #     }
+        #
+        # )
 
         # response = make_passthrough_call(
         #     context=MY_CONTEXT,
@@ -51,19 +51,19 @@ def run_test_call():
         #     }
         # )
 
-        api_path = f"employeedependents?employeeid=4"
+        api_path = f"legalentities/404733/departments"
 
         method = "GET"
-        headers = {
-            "Accept": "application/json"
-        }
+        # headers = {
+        #     "Accept": "application/json"
+        # }
 
         response = make_passthrough_call(
             context=MY_CONTEXT,
-            integration_id="mg_gMe9WA5DbWROfHMonG2zMs",
+            integration_id="mg_cwdKThkGYlRVrOKj4HMUkX",
             method=method,
             path=api_path,
-            headers=headers,
+            # headers=headers,
             body={}
         )
 
