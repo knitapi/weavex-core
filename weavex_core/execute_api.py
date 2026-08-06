@@ -240,6 +240,16 @@ def _refresh_oauth_token(integration_id: str, credentials: dict) -> dict:
     client_id     = credentials.get("clientId")
     client_secret = credentials.get("clientSecret")
 
+    # fallback — read clientId/clientSecret from oauth_app vault
+    if not all([client_id, client_secret]):
+        try:
+            account_id, customer_id, skill_id = _decode_integration_id(integration_id)
+            oauth_app     = _fetch_oauth_app(account_id, skill_id)
+            client_id     = oauth_app.get("clientId", "")
+            client_secret = oauth_app.get("clientSecret", "")
+        except Exception as e:
+            print(f"[refresh] could not read oauth_app vault: {e}", flush=True)
+
     if not all([refresh_token, token_url, client_id, client_secret]):
         raise RuntimeError(
             f"Cannot refresh OAuth token for '{integration_id}' — "
@@ -248,16 +258,20 @@ def _refresh_oauth_token(integration_id: str, credentials: dict) -> dict:
 
     print(f"[execute_api] refreshing OAuth token for {integration_id}", flush=True)
 
+    refresh_params = {
+        "grant_type":    "refresh_token",
+        "refresh_token": refresh_token,
+        "client_id":     client_id,
+        "client_secret": client_secret
+    }
+
     with httpx.Client(timeout=15) as client:
-        response = client.post(
-            token_url,
-            data={
-                "grant_type":    "refresh_token",
-                "refresh_token": refresh_token,
-                "client_id":     client_id,
-                "client_secret": client_secret
-            }
-        )
+        response = client.post(token_url, data=refresh_params)
+
+        # if form body fails, retry with query params (some APIs like Zoho prefer this)
+        if response.status_code != 200:
+            print(f"[refresh] form body failed ({response.status_code}), retrying with query params", flush=True)
+            response = client.post(token_url, params=refresh_params)
 
     if response.status_code != 200:
         raise RuntimeError(
@@ -278,28 +292,76 @@ def _refresh_oauth_token(integration_id: str, credentials: dict) -> dict:
     _cache.set(integration_id, updated)
     return updated
 
+
 def _refresh_client_credentials_token(integration_id: str, credentials: dict) -> dict:
     token_url     = credentials.get("tokenUrl")
     client_id     = credentials.get("clientId")
     client_secret = credentials.get("clientSecret")
+
     if not all([token_url, client_id, client_secret]):
         raise RuntimeError(f"Cannot refresh — missing tokenUrl, clientId, or clientSecret")
+
+    print(f"[execute_api] refreshing client credentials token for {integration_id}", flush=True)
+
+    refresh_params = {
+        "grant_type":    "client_credentials",
+        "client_id":     client_id,
+        "client_secret": client_secret
+    }
+
     with httpx.Client(timeout=15) as client:
-        response = client.post(token_url, data={
-            "grant_type":    "client_credentials",
-            "client_id":     client_id,
-            "client_secret": client_secret
-        })
+        response = client.post(token_url, data=refresh_params)
+
+        if response.status_code != 200:
+            print(f"[refresh] form body failed ({response.status_code}), retrying with query params", flush=True)
+            response = client.post(token_url, params=refresh_params)
+
     if response.status_code != 200:
-        raise RuntimeError(f"Token refresh failed: {response.status_code} — {response.text[:200]}")
+        raise RuntimeError(
+            f"Client credentials token refresh failed for '{integration_id}': "
+            f"{response.status_code} — {response.text[:200]}"
+        )
+
     tokens  = response.json()
     updated = {**credentials, "accessToken": tokens["access_token"]}
     if "expires_in" in tokens:
         updated["expiresAt"] = int(time.time() * 1000) + tokens["expires_in"] * 1000
+
     _update_credentials(integration_id, updated)
     _cache.set(integration_id, updated)
+    print(f"[execute_api] client credentials token refreshed for {integration_id}", flush=True)
     return updated
 
+
+def _decode_integration_id(integration_id: str) -> tuple[str, str, str]:
+    """Returns (account_id, customer_id, app_id)."""
+    try:
+        clean   = integration_id.removeprefix("wvx_sk_")
+        decoded = base64.urlsafe_b64decode(_pad(clean)).decode()
+        parts   = decoded.split(":")
+        if len(parts) != 3:
+            raise ValueError("Expected format: accountId:customerId:appId")
+        return parts[0], parts[1], parts[2]
+    except Exception as e:
+        raise ValueError(f"Invalid integration_id: {e}")
+
+def _pad(s: str) -> str:
+    return s + "=" * (4 - len(s) % 4)
+
+def _fetch_oauth_app(account_id: str, skill_id: str) -> dict:
+    """Fetch oauth_app credentials from connect server."""
+    connect_url = os.environ.get("WEAVEX_CONNECT_SERVER_URL", "http://localhost:8090")
+    try:
+        response = httpx.get(
+            f"{connect_url}/api/admin/skills/oauth-app",
+            params={"accountId": account_id, "skillId": skill_id},
+            timeout=10
+        )
+        if response.status_code == 200:
+            return response.json()
+    except Exception as e:
+        print(f"[refresh] failed to fetch oauth_app: {e}", flush=True)
+    return {}
 
 # ── URL builder ───────────────────────────────────────────────────────────────
 
