@@ -17,6 +17,8 @@
 
 import os
 import time
+import hmac
+import hashlib
 import base64
 import json
 import threading
@@ -195,9 +197,12 @@ def _build_auth_headers(credentials: dict) -> dict:
         encoded  = base64.b64encode(f"{username}:{password}".encode()).decode()
         return {"Authorization": f"Basic {encoded}"}
 
-    elif auth_type in ("bearer", "oauth2"):
-        token = credentials.get("accessToken") or credentials.get("token", "")
-        return {"Authorization": f"Bearer {token}"}
+    elif auth_type in ("bearer", "oauth2", "oauth2_authorization_code", "oauth2_client_credentials"):
+        header_name = credentials.get("headerName", "Authorization")
+        token_type  = credentials.get("tokenType", "Bearer")
+        token       = credentials.get("accessToken") or credentials.get("token", "")
+        header_val  = f"{token_type} {token}".strip() if token_type else token
+        return {header_name: header_val}
 
     elif auth_type == "apikey":
         header_name = credentials.get("headerName", "X-API-Key")
@@ -229,6 +234,10 @@ def _build_auth_params(credentials: dict) -> dict:
 # ── OAuth2 token refresh ──────────────────────────────────────────────────────
 
 def _refresh_oauth_token(integration_id: str, credentials: dict) -> dict:
+    auth_type = credentials.get("authType", "").lower()
+    if auth_type == "oauth2_client_credentials":
+        return _refresh_client_credentials_token(integration_id, credentials)
+
     refresh_token = credentials.get("refreshToken")
     token_url     = credentials.get("tokenUrl")
     client_id     = credentials.get("clientId")
@@ -268,6 +277,28 @@ def _refresh_oauth_token(integration_id: str, credentials: dict) -> dict:
     if "expires_in" in tokens:
         updated["expiresAt"] = int(time.time() * 1000) + tokens["expires_in"] * 1000
 
+    _update_credentials(integration_id, updated)
+    _cache.set(integration_id, updated)
+    return updated
+
+def _refresh_client_credentials_token(integration_id: str, credentials: dict) -> dict:
+    token_url     = credentials.get("tokenUrl")
+    client_id     = credentials.get("clientId")
+    client_secret = credentials.get("clientSecret")
+    if not all([token_url, client_id, client_secret]):
+        raise RuntimeError(f"Cannot refresh — missing tokenUrl, clientId, or clientSecret")
+    with httpx.Client(timeout=15) as client:
+        response = client.post(token_url, data={
+            "grant_type":    "client_credentials",
+            "client_id":     client_id,
+            "client_secret": client_secret
+        })
+    if response.status_code != 200:
+        raise RuntimeError(f"Token refresh failed: {response.status_code} — {response.text[:200]}")
+    tokens  = response.json()
+    updated = {**credentials, "accessToken": tokens["access_token"]}
+    if "expires_in" in tokens:
+        updated["expiresAt"] = int(time.time() * 1000) + tokens["expires_in"] * 1000
     _update_credentials(integration_id, updated)
     _cache.set(integration_id, updated)
     return updated
@@ -354,7 +385,7 @@ def execute_api(
 
         # ── handle auth errors ────────────────────────────────────────────────
         if response.status_code == 401:
-            if attempt == 0 and credentials.get("authType") == "oauth2":
+            if attempt == 0 and credentials.get("authType") in ("oauth2", "oauth2_authorization_code", "oauth2_client_credentials"):
                 print(f"[execute_api] 401 on {integration_id} — attempting token refresh", flush=True)
                 try:
                     credentials = _refresh_oauth_token(integration_id, credentials)
@@ -437,6 +468,9 @@ def _execute_once(
     auth_headers = _build_auth_headers(credentials)
     auth_params  = _build_auth_params(credentials)
 
+    print(credentials, flush=True)
+    print(auth_headers, flush=True)
+
     all_headers = {**auth_headers, **extra_headers}
     if body is not None:
         all_headers["Content-Type"] = content_type
@@ -459,7 +493,7 @@ def _execute_once(
         else:
             request_body = body
 
-    print(f"[execute_api] content_type={content_type} body_type={type(request_body)} body={str(request_body)[:100]}", flush=True)
+    print(f"[execute_api] content_type={content_type} body_type={type(request_body)} body={str(request_body)}", flush=True)
 
     with httpx.Client(timeout=timeout) as client:
         response = client.request(
