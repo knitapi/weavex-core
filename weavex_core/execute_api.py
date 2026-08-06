@@ -204,18 +204,15 @@ def _build_auth_headers(credentials: dict) -> dict:
         header_val  = f"{token_type} {token}".strip() if token_type else token
         return {header_name: header_val}
 
-    elif auth_type == "apikey":
-        header_name = credentials.get("headerName", "X-API-Key")
-        param_name  = credentials.get("paramName")
+    elif auth_type in ("api_key", "apikey"):
+        header_name = credentials.get("headerName", "Authorization")
+        token_type  = credentials.get("tokenType", "Bearer")
         key         = credentials.get("apiKey") or credentials.get("token", "")
+        param_name  = credentials.get("paramName")
         if param_name:
-            return {}
-        return {header_name: key}
-
-    elif auth_type == "api_key":
-        # stored as api_key from validate_auth.py — treat as Bearer
-        key = credentials.get("apiKey") or credentials.get("token", "")
-        return {"Authorization": f"Bearer {key}"}
+            return {}  # query param auth — handled elsewhere
+        header_val  = f"{token_type} {key}".strip() if token_type else key
+        return {header_name: header_val}
 
     elif auth_type == "custom":
         return credentials.get("headers", {})
