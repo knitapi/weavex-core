@@ -18,6 +18,14 @@ from .api_execution_facade import ApiExecutionFacade
 from .execute_api import execute_api
 from .execute_dw import execute_dw_query, execute_dw_write, DWQueryResult, DWWriteResult
 from .llm import complete, complete_one_shot, LLMResponse
+# 5. Expose Structured Error
+from .errors import WeavexError
+
+# 6. Expose Checkpoint
+from .checkpoint import StepCheckpoint, WorkflowCheckpointer
+
+# 7. Expose Weavex API Service
+from .weavex_api_service import WeavexAPIService
 
 # Expose Knit SDKs
 from . import knit_consumer
@@ -30,6 +38,10 @@ __all__ = [
     "get_object_store",
     "get_sync_state",
     "make_passthrough_call",
+    "WeavexError",
+    "StepCheckpoint",
+    "WorkflowCheckpointer",
+    "WeavexAPIService",
     "knit_consumer",
     "knit_mail",
     "knit_sync",
