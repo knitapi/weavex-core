@@ -1,4 +1,6 @@
 import os
+import hashlib
+import json
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 from google.cloud import firestore
@@ -28,6 +30,10 @@ class StateStore(ABC):
 
     @abstractmethod
     def delete_hash(self, project_id: str, record_id: str) -> None:
+        pass
+
+    @abstractmethod
+    def create_hash(self, project_id: str, record_id: str, obj: dict) -> str:
         pass
 
 class FirestoreStateStore(StateStore):
@@ -83,6 +89,40 @@ class FirestoreStateStore(StateStore):
             if "404" in str(e) or "NOT_FOUND" in str(e).upper():
                 return
             raise e # Re-raise if it's a different error (like permission denied)
+
+    def create_hash(self, project_id: str, record_id: str, obj: dict) -> str:
+        """
+        Computes a deterministic hash of `obj` for change-detection comparison.
+
+        Pure function — does NOT read or write any stored state. Compare its
+        output against a previously stored hash via get_hash(), and persist it
+        via set_hash() only after successfully processing the record (see the
+        CREATE -> CHECK -> ACT -> WRITE sequence this pairs with).
+
+        `project_id` and `record_id` are accepted for signature parity with
+        get_hash()/set_hash() but do NOT factor into the digest itself — the
+        hash reflects only `obj`'s content.
+
+        Args:
+            project_id: Project/tenant identifier (unused in the digest itself).
+            record_id: The record's unique identifier (unused in the digest
+                itself — e.g. the field you're keying on, such as work_email).
+            obj: The record data to hash. Only include the fields relevant to
+                change detection — the full record for FULL_RECORD, or a
+                pre-filtered sub-dict for SPECIFIC_FIELDS. This function does
+                not filter; build `obj` accordingly before calling.
+
+        Returns:
+            A hex-encoded SHA-256 digest string.
+        """
+        serialized = json.dumps(
+            obj,
+            sort_keys=True,          # dict key order never affects the output
+            separators=(",", ":"),   # no incidental whitespace differences
+            default=str,             # gracefully stringify non-JSON-native types
+            ensure_ascii=True,
+        )
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
     def get_hash(self, project_id: str, record_id: str) -> Optional[str]:
         doc = self._get_hash_doc(project_id, record_id).get()
