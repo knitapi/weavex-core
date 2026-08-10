@@ -191,33 +191,39 @@ def _get_credentials(integration_id: str, force_refresh: bool = False) -> dict:
 def _build_auth_headers(credentials: dict) -> dict:
     auth_type = credentials.get("authType", "bearer").lower()
 
+    headers = {}
+
     if auth_type == "basic":
         username = credentials.get("username", "")
         password = credentials.get("password", "")
         encoded  = base64.b64encode(f"{username}:{password}".encode()).decode()
-        return {"Authorization": f"Basic {encoded}"}
+        headers = {"Authorization": f"Basic {encoded}"}
 
     elif auth_type in ("bearer", "oauth2", "oauth2_authorization_code", "oauth2_client_credentials"):
         header_name = credentials.get("headerName", "Authorization")
         token_type  = credentials.get("tokenType", "Bearer")
         token       = credentials.get("accessToken") or credentials.get("token", "")
         header_val  = f"{token_type} {token}".strip() if token_type else token
-        return {header_name: header_val}
+        headers = {header_name: header_val}
 
     elif auth_type in ("api_key", "apikey"):
         header_name = credentials.get("headerName", "Authorization")
         token_type  = credentials.get("tokenType", "Bearer")
         key         = credentials.get("apiKey") or credentials.get("token", "")
         param_name  = credentials.get("paramName")
-        if param_name:
-            return {}  # query param auth — handled elsewhere
-        header_val  = f"{token_type} {key}".strip() if token_type else key
-        return {header_name: header_val}
+        if not param_name:
+            header_val = f"{token_type} {key}".strip() if token_type else key
+            headers = {header_name: header_val}
 
     elif auth_type == "custom":
-        return credentials.get("headers", {})
+        headers = credentials.get("headers", {})
 
-    return {}
+    # If vault credentials include extra stored headers, merge them.
+    stored_headers = credentials.get("headers")
+    if isinstance(stored_headers, dict):
+        headers = {**stored_headers, **headers}
+
+    return headers
 
 
 def _build_auth_params(credentials: dict) -> dict:
