@@ -1,7 +1,7 @@
 import os
 import time
 import uuid
-import signal
+import threading, signal
 import sys
 import atexit
 from abc import ABC, abstractmethod
@@ -25,7 +25,8 @@ class BaseLogger(ABC):
 
         # Register lifecycle handlers for clean shutdown
         atexit.register(self.shutdown)
-        signal.signal(signal.SIGTERM, self._handle_sigterm)
+        if threading.current_thread() is threading.main_thread():
+            signal.signal(signal.SIGTERM, self._handle_sigterm)
 
     @abstractmethod
     def log(self, payload: Dict[str, Any], blocking: bool = False):
