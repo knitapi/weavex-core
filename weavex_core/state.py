@@ -21,6 +21,23 @@ class StateStore(ABC):
         pass
 
     @abstractmethod
+    def get_sync_hash(self, project_id: str, sync_id: str, record_id: str) -> Optional[str]:
+        pass
+
+    @abstractmethod
+    def set_sync_hash(self, project_id: str, sync_id: str, record_id: str, hash_value: str) -> None:
+        pass
+
+    @abstractmethod
+    def delete_sync_hash(self, project_id: str, sync_id: str, record_id: str) -> None:
+        pass
+
+    @abstractmethod
+    def create_sync_hash(self, project_id: str, sync_id: str, record_id: str, obj: dict) -> str:
+        pass
+
+    # Deprecated: use get_sync_hash/set_sync_hash/delete_sync_hash/create_sync_hash instead.
+    @abstractmethod
     def get_hash(self, project_id: str, record_id: str) -> Optional[str]:
         pass
 
@@ -66,6 +83,12 @@ class FirestoreStateStore(StateStore):
         return self.db.collection('projects').document(project_id) \
             .collection('hashes').document(record_id)
 
+    def _get_sync_hash_doc(self, project_id, sync_id, record_id):
+        # Structure: projects/{pid}/syncs/{sid}/hashes/{record_id}
+        return self.db.collection('projects').document(project_id) \
+            .collection('syncs').document(sync_id) \
+            .collection('hashes').document(record_id)
+
     def get_state(self, project_id: str, sync_id: str, step_id: str, key: str) -> Any:
         doc = self._get_state_doc(project_id, sync_id, step_id).get()
         if doc.exists:
@@ -90,6 +113,56 @@ class FirestoreStateStore(StateStore):
                 return
             raise e # Re-raise if it's a different error (like permission denied)
 
+    def create_sync_hash(self, project_id: str, sync_id: str, record_id: str, obj: dict) -> str:
+        """
+        Computes a deterministic hash of `obj` for change-detection comparison.
+
+        Pure function — does NOT read or write any stored state. Compare its
+        output against a previously stored hash via get_sync_hash(), and
+        persist it via set_sync_hash() only after successfully processing the
+        record (see the CREATE -> CHECK -> ACT -> WRITE sequence this pairs
+        with).
+
+        `project_id`, `sync_id`, and `record_id` are accepted for signature
+        parity with get_sync_hash()/set_sync_hash() but do NOT factor into the
+        digest itself — the hash reflects only `obj`'s content.
+
+        Args:
+            project_id: Project/tenant identifier (unused in the digest itself).
+            sync_id: The sync run identifier (unused in the digest itself).
+            record_id: The record's unique identifier (unused in the digest
+                itself — e.g. the field you're keying on, such as work_email).
+            obj: The record data to hash. Only include the fields relevant to
+                change detection — the full record for FULL_RECORD, or a
+                pre-filtered sub-dict for SPECIFIC_FIELDS. This function does
+                not filter; build `obj` accordingly before calling.
+
+        Returns:
+            A hex-encoded SHA-256 digest string.
+        """
+        serialized = json.dumps(
+            obj,
+            sort_keys=True,          # dict key order never affects the output
+            separators=(",", ":"),   # no incidental whitespace differences
+            default=str,             # gracefully stringify non-JSON-native types
+            ensure_ascii=True,
+        )
+        return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def get_sync_hash(self, project_id: str, sync_id: str, record_id: str) -> Optional[str]:
+        doc = self._get_sync_hash_doc(project_id, sync_id, record_id).get()
+        if doc.exists:
+            return doc.to_dict().get('hash')
+        return None
+
+    def set_sync_hash(self, project_id: str, sync_id: str, record_id: str, hash_value: str) -> None:
+        doc_ref = self._get_sync_hash_doc(project_id, sync_id, record_id)
+        doc_ref.set({'hash': hash_value}, merge=True)
+
+    def delete_sync_hash(self, project_id: str, sync_id: str, record_id: str) -> None:
+        self._get_sync_hash_doc(project_id, sync_id, record_id).delete()
+
+    # Deprecated: use create_sync_hash() instead. Kept for backward compatibility.
     def create_hash(self, project_id: str, record_id: str, obj: dict) -> str:
         """
         Computes a deterministic hash of `obj` for change-detection comparison.
@@ -124,16 +197,19 @@ class FirestoreStateStore(StateStore):
         )
         return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
+    # Deprecated: use get_sync_hash() instead. Kept for backward compatibility.
     def get_hash(self, project_id: str, record_id: str) -> Optional[str]:
         doc = self._get_hash_doc(project_id, record_id).get()
         if doc.exists:
             return doc.to_dict().get('hash')
         return None
 
+    # Deprecated: use set_sync_hash() instead. Kept for backward compatibility.
     def set_hash(self, project_id: str, record_id: str, hash_value: str) -> None:
         doc_ref = self._get_hash_doc(project_id, record_id)
         doc_ref.set({'hash': hash_value}, merge=True)
 
+    # Deprecated: use delete_sync_hash() instead. Kept for backward compatibility.
     def delete_hash(self, project_id: str, record_id: str) -> None:
         self._get_hash_doc(project_id, record_id).delete()
 
