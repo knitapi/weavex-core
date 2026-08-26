@@ -29,7 +29,7 @@ def run_skill_call_read():
     try:
         response = ApiExecutionFacade.execute(
             context=KNIT_CONTEXT,
-            integration_id="wvx_sk_b19JUDZpOXJ2dk1OWGNDc3NHaGQ4NmdvOnN0cmlwZQ",
+            integration_id="wvx_sk_b19JUDZpOXJ2dk1OWGNDc3NHaGQ4NmdvOm9fSVA2aTlydnZNTlhjQ3NzR2hkODZnbzpzdHJpcGU",
             method="GET",
             path="/v1/customers?limit=5"
         )
@@ -46,7 +46,7 @@ def run_skill_call_write():
     try:
         response = ApiExecutionFacade.execute(
             context=KNIT_CONTEXT,
-            integration_id="wvx_sk_b19JUDZpOXJ2dk1OWGNDc3NHaGQ4NmdvOnN0cmlwZQ",   # your Stripe knit integration_id
+            integration_id="wvx_sk_b19JUDZpOXJ2dk1OWGNDc3NHaGQ4NmdvOm9fSVA2aTlydnZNTlhjQ3NzR2hkODZnbzpzdHJpcGU",   # your Stripe knit integration_id
             method="POST",
             path="/v1/customers",
             content_type="application/x-www-form-urlencoded",

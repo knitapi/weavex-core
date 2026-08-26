@@ -102,6 +102,13 @@ def _get_connect_server_url() -> str:
     return url.rstrip("/")
 
 
+def _connect_server_auth_headers() -> dict:
+    token = os.environ.get("WEAVEX_SKILLS_CONNECT_API_KEY")
+    if not token:
+        raise RuntimeError("WEAVEX_SKILLS_CONNECT_API_KEY env var not set")
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _fetch_credentials(integration_id: str) -> dict:
     """
     Fetches credentials from the connect server vault.
@@ -111,7 +118,7 @@ def _fetch_credentials(integration_id: str) -> dict:
     print(f"[execute_api] fetching credentials for {integration_id} from {url}", flush=True)
 
     with httpx.Client(timeout=10) as client:
-        response = client.get(url)
+        response = client.get(url, headers=_connect_server_auth_headers())
 
     if response.status_code == 404:
         raise RuntimeError(
@@ -143,7 +150,7 @@ def _fetch_credentials(integration_id: str) -> dict:
 def _update_credentials(integration_id: str, credentials: dict) -> None:
     url = f"{_get_connect_server_url()}/api/vault/{integration_id}"
     with httpx.Client(timeout=10) as client:
-        response = client.put(url, json=credentials)
+        response = client.put(url, json=credentials, headers=_connect_server_auth_headers())
     if response.status_code not in (200, 204):
         print(
             f"WARN: failed to update credentials for '{integration_id}': "
@@ -361,6 +368,7 @@ def _fetch_oauth_app(account_id: str, skill_id: str) -> dict:
         response = httpx.get(
             f"{connect_url}/api/admin/skills/oauth-app",
             params={"accountId": account_id, "skillId": skill_id},
+            headers=_connect_server_auth_headers(),
             timeout=10
         )
         if response.status_code == 200:
