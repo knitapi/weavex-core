@@ -339,11 +339,17 @@ def _bridge_url() -> str:
         )
     return url.rstrip("/")
 
+def _connect_server_auth_headers() -> dict:
+    token = os.environ.get("WEAVEX_DW_BRIDGE_API_KEY")
+    if not token:
+        raise RuntimeError("WEAVEX_DW_BRIDGE_API_KEY env var not set")
+    return {"Authorization": f"Bearer {token}"}
+
 
 def _call_bridge(endpoint: str, payload: dict, http_timeout: int = 30) -> dict:
     url = f"{_bridge_url()}{endpoint}"
     try:
-        with httpx.Client(timeout=http_timeout) as client:
+        with httpx.Client(timeout=http_timeout, headers=_connect_server_auth_headers()) as client:
             response = client.post(url, json=payload)
     except httpx.TimeoutException:
         raise RuntimeError(f"Bridge server timed out on {endpoint} after {http_timeout}s")

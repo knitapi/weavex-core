@@ -88,4 +88,5 @@ def main():
 
 
 if __name__ == "__main__":
+    os.environ["WEAVEX_DW_BRIDGE_API_KEY"] = "change-me"
     main()
