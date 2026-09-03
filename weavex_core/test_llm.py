@@ -1,11 +1,15 @@
 import json
+import os
 from weavex_core.llm import complete
+
+os.environ["WEAVEX_CONNECT_SERVER_URL"] = "http://localhost:8090"
+os.environ["WEAVEX_SKILLS_CONNECT_API_KEY"] = "change-me"
 
 # 1. Configuration
 MY_CONTEXT = {
     "knit_api_key": "0e725a74db1050550bc2f287ec3c8f1e51a1a82fd673d387a7592707029b6606",
     "execution_id": "manual_test_001",
-    "integration_id": "mg_qeL5xl6gYIonhtUMIXGzNx",
+    "integration_id": "wvx_sk_b19JUDZpOXJ2dk1OWGNDc3NHaGQ4NmdvOnRlc3RfY3VzdDEyNTU6Z2VtaW5p",
     "knit_env": "sandbox",
     "region": "",
 }

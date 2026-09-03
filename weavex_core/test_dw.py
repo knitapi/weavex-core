@@ -22,8 +22,8 @@ from weavex_core import execute_dw_query, execute_dw_write
 
 # ── CONFIG — edit before running ────────────────────────────────────────────
 
-INTEGRATION_ID = "wvx_sk_b19JUDZpOXJ2dk1OWGNDc3NHaGQ4NmdvOm9fSVA2aTlydnZNTlhjQ3NzR2hkODZnbzpzbm93Zmxha2U"
-TABLE          = "TEST.PUBLIC.CUSTOMER"   # database.schema.table
+INTEGRATION_ID = "wvx_sk_b18wMDJmMGVjOWJhMjI0NzE4Om9fMDAyZjBlYzliYTIyNDcxODpiaWdxdWVyeQ"
+TABLE          = "test.customers"   # database.schema.table
 
 
 def main():
@@ -66,11 +66,11 @@ def main():
         context        = context,
         integration_id = INTEGRATION_ID,
         query          = f"""
-            SELECT ID, NAME, EMAIL, CREATED_AT
-            FROM {TABLE}
-            WHERE EMAIL = %(email)s
+            SELECT COUNT(*) AS record_count
+            FROM `test.customers`
+            WHERE CONTAINS_SUBSTR(email, @term)
         """,
-        params      = {"email": marker_email},
+        params      = {"term": "jan"},
         max_results = 10
     )
     print(f"row_count={query_result.row_count} columns={query_result.columns} "
@@ -88,5 +88,5 @@ def main():
 
 
 if __name__ == "__main__":
-    os.environ["WEAVEX_DW_BRIDGE_API_KEY"] = "change-me"
+    os.environ["WEAVEX_DW_BRIDGE_API_KEY"] = "e04UUhMQvuu26qmhEaoD1jhtma8DOPwbEmBTPT8lUszyl8XI2iJQOM03Kw8d7g8e"
     main()
