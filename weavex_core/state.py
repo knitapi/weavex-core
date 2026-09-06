@@ -58,7 +58,7 @@ class FirestoreStateStore(StateStore):
 
     def __init__(self):
         # Get the base database name
-        base_db = os.environ.get("FIRESTORE_DATABASE", "weavex-state")
+        base_db = os.environ.get("STATE_DATABASE", "weavex-state")
 
         # Get the region setting
         region = os.getenv("WEAVEX_SERVICE_REGION", "eu").lower()
