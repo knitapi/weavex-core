@@ -12,6 +12,12 @@ setup(
         "requests>=2.31.0",
         "google-cloud-storage>=2.0.0", # Assuming you use this for object store
         # "temporalio>=1.4.0",         # Uncomment if weavex-core itself imports temporal types
+
+        # Required by weavex_core.llm
+        "langchain-core>=0.2.0",
+        "langchain-openai>=0.1.0",
+        "langchain-anthropic>=0.1.0",
+        "langchain-google-genai>=1.0.0",
     ],
     author="Knit",
     description="Core utilities for Weavex AI Agents and Sync Workers",
