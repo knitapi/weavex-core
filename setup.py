@@ -12,10 +12,6 @@ setup(
         "requests>=2.31.0",
         "google-cloud-storage>=2.0.0",
 
-        # Database
-        "psycopg2-binary==2.9.9",
-        "snowflake-connector-python>=4.5.0",
-
         # LangChain
         "langchain-core>=1.6.1",
         "langchain-google-genai>=4.4.0",
