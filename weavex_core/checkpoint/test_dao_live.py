@@ -9,9 +9,9 @@ Configure the two project ids below, then run:
 
     python -m weavex_core.checkpoint.test_dao_live
 
-TESTING_PROJECT_ID must be a project currently in TESTING status.
-NON_TESTING_PROJECT_ID must be a project in any other status (LIVE, DRAFT, ...).
-Set NON_TESTING_PROJECT_ID to None to skip check [6].
+TESTING_PROJECT_ID must be a project currently in TESTING status (any status
+works for checkpointing itself, which is unconditional, but [1] asserts the
+DAO's status lookup specifically finds TESTING).
 """
 
 import json
@@ -25,7 +25,6 @@ from weavex_core.dao import CHECKPOINTS_COLLECTION, PROJECTS_COLLECTION, get_dao
 # --- configure these -------------------------------------------------------
 TESTING_PROJECT_ID = ""
 TESTING_ORG_ID = ""
-NON_TESTING_PROJECT_ID = None
 # ---------------------------------------------------------------------------
 
 CONTEXT_PAYLOAD = {"knit_api_key": "verify-key", "region": "eu", "nested": {"a": [1, 2]}}
@@ -236,72 +235,21 @@ def run_test():
 
         check("masked reads behave as the DAO assumes", case_5d)
 
-        # 5e. Non-TESTING project holding a real success entry
-        print("\n[5e] is_complete on a non-TESTING project")
+        # 6. Every project document carries a top-level status field
+        print("\n[6] Top-level status field present on project documents")
 
-        if NON_TESTING_PROJECT_ID:
-            def case_5e():
-                skip_exec = f"dao-verify-live-{int(time.time())}"
-                skip_ref = db.collection(CHECKPOINTS_COLLECTION).document(
-                    f"{NON_TESTING_PROJECT_ID}:{skip_exec}"
-                )
-                skip_ref.set({"s": '{"step_id":"s","status":"success","error":null}'})
-                try:
-                    cp = WorkflowCheckpointer(NON_TESTING_PROJECT_ID, _context(skip_exec))
-                    assert cp.is_complete("s") is False, (
-                        "returned True for a non-TESTING project — the status gate was skipped"
-                    )
-                finally:
-                    skip_ref.delete()
-
-            check("non-TESTING ignores a recorded success", case_5e)
-        else:
-            print("    SKIPPED: set NON_TESTING_PROJECT_ID to run this check")
-
-        # 5f. Missing project
-        print("\n[5f] is_complete on a nonexistent project")
-
-        def case_5f():
-            cp = WorkflowCheckpointer("does-not-exist-dao-verify", _context(execution_id))
-            result = cp.is_complete("s")  # must not raise
-            assert result is False, result
-
-        check("missing project is swallowed and treated as not complete", case_5f)
-
-        # 6. Non-TESTING project short-circuits and writes nothing
-        print("\n[6] Non-TESTING project")
-
-        if NON_TESTING_PROJECT_ID:
-            def case_6():
-                other_exec = f"dao-verify-skip-{int(time.time())}"
-                cp = WorkflowCheckpointer(NON_TESTING_PROJECT_ID, _context(other_exec))
-                result = cp.init(CONTEXT_PAYLOAD, INTEGRATION_IDS, USER_INPUT)
-                assert result == {}, result
-
-                skip_ref = db.collection(CHECKPOINTS_COLLECTION).document(
-                    f"{NON_TESTING_PROJECT_ID}:{other_exec}"
-                )
-                assert not skip_ref.get().exists, "a document was created for a non-TESTING project"
-
-            check("non-TESTING returns {} and creates no document", case_6)
-        else:
-            print("    SKIPPED: set NON_TESTING_PROJECT_ID to run this check")
-
-        # 7. Every project document carries a top-level status field
-        print("\n[7] Top-level status field present on project documents")
-
-        def case_7():
+        def case_6():
             docs = list(db.collection(PROJECTS_COLLECTION).select(["status"]).limit(20).stream())
             assert docs, "no project documents found"
             missing = [d.id for d in docs if not (d.to_dict() or {}).get("status")]
             assert not missing, f"{len(missing)} project doc(s) lack a top-level status: {missing[:5]}"
             print(f"    checked {len(docs)} project documents")
 
-        check("all sampled project docs expose a top-level status", case_7)
+        check("all sampled project docs expose a top-level status", case_6)
 
     finally:
-        # 8. Clean up the throwaway document
-        print("\n[8] Cleanup")
+        # 7. Clean up the throwaway document
+        print("\n[7] Cleanup")
         try:
             doc_ref.delete()
             print(f"    deleted {doc_id}")

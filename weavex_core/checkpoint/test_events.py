@@ -4,8 +4,8 @@ Offline contract test for the Pub/Sub-backed WorkflowCheckpointer writes.
 Needs no GCP credentials and makes no network calls. Two halves:
 
   * WorkflowCheckpointer with a FakeDao and a FakeEventPublisher — asserts the
-    TESTING gate, event envelope, message schema, ordering key and the
-    never-raise guarantees of success / fail / clear.
+    event envelope, message schema, ordering key and the never-raise
+    guarantees of success / fail / clear.
   * PubSubEventPublisher with an injected FakeClient — asserts topic resolution,
     encoding, and the ordering-key pause/resume handling.
 
@@ -135,7 +135,7 @@ def run_test():
     # ------------------------------------------------------------------
     # success
     # ------------------------------------------------------------------
-    print("\n[1] success on a TESTING project")
+    print("\n[1] success emits a checkpoint")
 
     def case_1():
         pub = FakeEventPublisher()
@@ -159,32 +159,12 @@ def run_test():
 
     check("success emits one checkpoint.set with checkpoint + stepContext", case_1)
 
-    print("\n[2] success on a non-TESTING project")
-
-    def case_2():
-        pub = FakeEventPublisher()
-        cp = _make_checkpointer(FakeDao("LIVE"), pub)
-        cp.success("fetch_employees", STEP_CONTEXT)
-        assert pub.messages == [], pub.messages
-
-    check("non-TESTING publishes nothing", case_2)
-
-    print("\n[3] success on a missing project")
-
-    def case_3():
-        pub = FakeEventPublisher()
-        cp = _make_checkpointer(FakeDao(None), pub)
-        cp.success("fetch_employees", STEP_CONTEXT)  # must not raise
-        assert pub.messages == [], pub.messages
-
-    check("missing project is swallowed, publishes nothing", case_3)
-
     # ------------------------------------------------------------------
     # fail
     # ------------------------------------------------------------------
-    print("\n[4] fail with a valid error_json")
+    print("\n[2] fail with a valid error_json")
 
-    def case_4():
+    def case_2():
         pub = FakeEventPublisher()
         cp = _make_checkpointer(FakeDao("TESTING"), pub)
         cp.fail("fetch_employees", ERROR_JSON)
@@ -201,11 +181,11 @@ def run_test():
             "Kotlin DTO's nullable field"
         )
 
-    check("fail emits status=failed, error as a dict, no stepContext key", case_4)
+    check("fail emits status=failed, error as a dict, no stepContext key", case_2)
 
-    print("\n[5] fail with a malformed error_json")
+    print("\n[3] fail with a malformed error_json")
 
-    def case_5():
+    def case_3():
         pub = FakeEventPublisher()
         cp = _make_checkpointer(FakeDao("TESTING"), pub)
         cp.fail("fetch_employees", "not-json")
@@ -215,36 +195,26 @@ def run_test():
             "raw_error": "not-json",
         }, payload["checkpoint"]["error"]
 
-    check("malformed error_json degrades to an unknown-error dict", case_5)
+    check("malformed error_json degrades to an unknown-error dict", case_3)
 
-    print("\n[6] fail on a missing project")
+    print("\n[4] fail when the publisher itself explodes")
 
-    def case_6():
-        pub = FakeEventPublisher()
-        cp = _make_checkpointer(FakeDao(None), pub)
-        cp.fail("fetch_employees", ERROR_JSON)  # must not raise
-        assert pub.messages == [], pub.messages
-
-    check("missing project is swallowed, publishes nothing", case_6)
-
-    print("\n[7] fail when the publisher itself explodes")
-
-    def case_7():
+    def case_4():
         pub = FakeEventPublisher(raises=RuntimeError("broker on fire"))
         cp = _make_checkpointer(FakeDao("TESTING"), pub)
         cp.fail("fetch_employees", ERROR_JSON)  # must not raise
 
     check(
         "publisher failure does not escape fail() (would mask the real step error)",
-        case_7,
+        case_4,
     )
 
     # ------------------------------------------------------------------
     # clear
     # ------------------------------------------------------------------
-    print("\n[8] clear on a TESTING project")
+    print("\n[5] clear emits an envelope-only event")
 
-    def case_8():
+    def case_5():
         pub = FakeEventPublisher()
         cp = _make_checkpointer(FakeDao("TESTING"), pub)
         cp.clear()
@@ -256,34 +226,14 @@ def run_test():
         assert "stepId" not in attrs, attrs
         assert "checkpoint" not in payload, payload
 
-    check("clear emits an envelope-only checkpoint.clear with no stepId", case_8)
-
-    print("\n[9] clear on a missing project")
-
-    def case_9():
-        pub = FakeEventPublisher()
-        cp = _make_checkpointer(FakeDao(None), pub)
-        cp.clear()  # must not raise: /checkpoint.clear returns 200 for this
-        assert pub.messages == [], pub.messages
-
-    check("missing project returns silently (parity: clear 200s)", case_9)
-
-    print("\n[10] clear on a non-TESTING project")
-
-    def case_10():
-        pub = FakeEventPublisher()
-        cp = _make_checkpointer(FakeDao("LIVE"), pub)
-        cp.clear()
-        assert pub.messages == [], pub.messages
-
-    check("non-TESTING clear publishes nothing", case_10)
+    check("clear emits an envelope-only checkpoint.clear with no stepId", case_5)
 
     # ------------------------------------------------------------------
     # envelope invariants
     # ------------------------------------------------------------------
-    print("\n[11] Ordering key")
+    print("\n[6] Ordering key")
 
-    def case_11():
+    def case_6():
         pub = FakeEventPublisher()
         cp = _make_checkpointer(FakeDao("TESTING"), pub)
         cp.success("s", {})
@@ -292,11 +242,11 @@ def run_test():
         keys = {key for _, key, _ in pub.messages}
         assert keys == {"proj_test:exec_test"}, keys
 
-    check("all three events share the {project}:{execution} ordering key", case_11)
+    check("all three events share the {project}:{execution} ordering key", case_6)
 
-    print("\n[12] Attribute types and envelope/attribute agreement")
+    print("\n[7] Attribute types and envelope/attribute agreement")
 
-    def case_12():
+    def case_7():
         pub = FakeEventPublisher()
         cp = _make_checkpointer(FakeDao("TESTING"), pub)
         cp.success("fetch_employees", STEP_CONTEXT)
@@ -309,11 +259,11 @@ def run_test():
         assert attrs["schemaVersion"] == "1", attrs["schemaVersion"]
         assert attrs["stepId"] == "fetch_employees", attrs["stepId"]
 
-    check("attributes are all str and agree with the envelope", case_12)
+    check("attributes are all str and agree with the envelope", case_7)
 
-    print("\n[13] eventId uniqueness")
+    print("\n[8] eventId uniqueness")
 
-    def case_13():
+    def case_8():
         pub = FakeEventPublisher()
         cp = _make_checkpointer(FakeDao("TESTING"), pub)
         cp.success("a", {})
@@ -321,27 +271,27 @@ def run_test():
         first, second = pub.messages[0][0]["eventId"], pub.messages[1][0]["eventId"]
         assert first != second, f"eventId repeated: {first}"
 
-    check("each event gets a fresh eventId", case_13)
+    check("each event gets a fresh eventId", case_8)
 
-    print("\n[14] Payload is JSON-serialisable")
+    print("\n[9] Payload is JSON-serialisable")
 
-    def case_14():
+    def case_9():
         pub = FakeEventPublisher()
         cp = _make_checkpointer(FakeDao("TESTING"), pub)
         cp.success("fetch_employees", STEP_CONTEXT)
         payload, _, _ = pub.messages[0]
         assert json.loads(json.dumps(payload)) == payload
 
-    check("payload round-trips through json.dumps/loads unchanged", case_14)
+    check("payload round-trips through json.dumps/loads unchanged", case_9)
 
     # ------------------------------------------------------------------
     # PubSubEventPublisher
     # ------------------------------------------------------------------
     print("\n--- PubSubEventPublisher ---")
 
-    print("\n[15] Topic resolution")
+    print("\n[10] Topic resolution")
 
-    def case_15():
+    def case_10():
         original = os.environ.pop("WEAVEX_SERVICE_REGION", None)
         try:
             eu = _make_publisher(FakeClient())
@@ -359,11 +309,11 @@ def run_test():
             if original is not None:
                 os.environ["WEAVEX_SERVICE_REGION"] = original
 
-    check("the -eu suffix is applied only outside a non-eu region", case_15)
+    check("the -eu suffix is applied only outside a non-eu region", case_10)
 
-    print("\n[16] Message encoding")
+    print("\n[11] Message encoding")
 
-    def case_16():
+    def case_11():
         client = FakeClient()
         pub = _make_publisher(client)
         payload = {"a": 1, "b": {"name": "café"}}
@@ -377,11 +327,11 @@ def run_test():
         # Non-ASCII stays literal UTF-8 rather than \uXXXX, also matching kotlinx
         assert "café".encode("utf-8") in data, data
 
-    check("data is compact UTF-8 bytes with literal non-ASCII", case_16)
+    check("data is compact UTF-8 bytes with literal non-ASCII", case_11)
 
-    print("\n[17] Ordering key and attributes forwarding")
+    print("\n[12] Ordering key and attributes forwarding")
 
-    def case_17():
+    def case_12():
         client = FakeClient()
         pub = _make_publisher(client)
         pub.publish({"a": 1}, ordering_key="k1", attributes={"eventId": "e1", "n": 7})
@@ -390,21 +340,21 @@ def run_test():
         assert ordering_key == "k1", ordering_key
         assert attrs == {"eventId": "e1", "n": "7"}, attrs
 
-    check("ordering_key is forwarded and attributes are coerced to str kwargs", case_17)
+    check("ordering_key is forwarded and attributes are coerced to str kwargs", case_12)
 
-    print("\n[18] Synchronous publish rejection")
+    print("\n[13] Synchronous publish rejection")
 
-    def case_18():
+    def case_13():
         client = FakeClient(publish_exception=RuntimeError("message too large"))
         pub = _make_publisher(client)
         pub.publish({"a": 1}, ordering_key="k1")  # must not raise
         assert pub._pending == set(), pub._pending
 
-    check("a synchronous rejection is contained and leaves nothing pending", case_18)
+    check("a synchronous rejection is contained and leaves nothing pending", case_13)
 
-    print("\n[19] Failed delivery resumes the ordering key")
+    print("\n[14] Failed delivery resumes the ordering key")
 
-    def case_19():
+    def case_14():
         client = FakeClient(future_exception=RuntimeError("NotFound: topic"))
         pub = _make_publisher(client)
         pub.publish({"a": 1}, ordering_key="k1")  # must not raise
@@ -415,14 +365,14 @@ def run_test():
             f"future not discarded from _pending: {pub._pending}"
         )
 
-    check("a failed future triggers resume_publish and clears _pending", case_19)
+    check("a failed future triggers resume_publish and clears _pending", case_14)
 
     # ------------------------------------------------------------------
     # WorkflowCheckpointer construction
     # ------------------------------------------------------------------
-    print("\n[20] Construction never raises even if the event publisher can't be built")
+    print("\n[15] Construction never raises even if the event publisher can't be built")
 
-    def case_20():
+    def case_15():
         original_dao = checkpoint_module.get_dao
         original_pub = checkpoint_module.get_event_publisher
         dao = FakeDao("TESTING")
@@ -445,7 +395,7 @@ def run_test():
 
     check(
         "a failing get_event_publisher() is logged, not raised, and later calls still don't raise",
-        case_20,
+        case_15,
     )
 
     print("\n--- Summary ---")

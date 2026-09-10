@@ -3,8 +3,8 @@ Offline contract test for the DAO-backed WorkflowCheckpointer methods.
 
 Needs no GCP credentials and makes no network calls: it substitutes a
 FakeDao for the real Firestore implementation and asserts the orchestration
-logic in checkpoint.py (TESTING gate, JSON stringification, step_context
-parsing, response shape, and every is_complete branch).
+logic in checkpoint.py (JSON stringification, step_context parsing, response
+shape, and every is_complete branch).
 
 Run:  python -m weavex_core.checkpoint.test_dao
 """
@@ -123,8 +123,8 @@ def run_test():
             print(f"    ERROR: {label} -> {type(e).__name__}: {e}")
             failures.append(label)
 
-    # 1. Fresh init on a TESTING project
-    print("\n[1] TESTING + new document")
+    # 1. Fresh init writes a new document
+    print("\n[1] New document")
 
     def case_1():
         dao = FakeDao("TESTING", was_new=True, existing={})
@@ -133,12 +133,11 @@ def run_test():
         assert result == {"init": True, "step_context": {}}, result
         assert dao.last_project_id == "proj_test", dao.last_project_id
         assert dao.last_execution_id == "exec_test", dao.last_execution_id
-        assert dao.last_org_id == "org_test", dao.last_org_id
 
     check("fresh init returns init=True and empty step_context", case_1)
 
     # 2. Resume: existing step_context is parsed back out
-    print("\n[2] TESTING + existing document with step_context")
+    print("\n[2] Existing document with step_context")
 
     def case_2():
         dao = FakeDao(
@@ -155,45 +154,21 @@ def run_test():
 
     check("resume returns init=False and parsed step_context", case_2)
 
-    # 3. Non-TESTING project short-circuits without touching the checkpoint doc
-    print("\n[3] Project not in TESTING")
+    # 3. Corrupt step_context degrades to {} rather than raising
+    print("\n[3] Malformed step_context")
 
     def case_3():
-        dao = FakeDao("LIVE")
-        cp = _make_checkpointer(dao)
-        result = cp.init(CONTEXT, INTEGRATION_IDS, USER_INPUT)
-        assert result == {}, result
-        assert dao.init_calls == 0, f"init_checkpoint called {dao.init_calls} times"
-
-    check("non-TESTING returns {} and never writes", case_3)
-
-    # 4. Missing project is swallowed
-    print("\n[4] Project not found")
-
-    def case_4():
-        dao = FakeDao(None)
-        cp = _make_checkpointer(dao)
-        result = cp.init(CONTEXT, INTEGRATION_IDS, USER_INPUT)  # must not raise
-        assert result == {}, result
-        assert dao.init_calls == 0, f"init_checkpoint called {dao.init_calls} times"
-
-    check("missing project is swallowed and returns {}", case_4)
-
-    # 5. Corrupt step_context degrades to {} rather than raising
-    print("\n[5] Malformed step_context")
-
-    def case_5():
         dao = FakeDao("TESTING", was_new=False, existing={"step_context": "not-json"})
         cp = _make_checkpointer(dao)
         result = cp.init(CONTEXT, INTEGRATION_IDS, USER_INPUT)
         assert result == {"init": False, "step_context": {}}, result
 
-    check("malformed step_context yields {} without raising", case_5)
+    check("malformed step_context yields {} without raising", case_3)
 
-    # 6. Stored fields are JSON strings that round-trip
-    print("\n[6] Field stringification")
+    # 4. Stored fields are JSON strings that round-trip
+    print("\n[4] Field stringification")
 
-    def case_6():
+    def case_4():
         dao = FakeDao("TESTING", was_new=True, existing={})
         cp = _make_checkpointer(dao)
         cp.init(CONTEXT, INTEGRATION_IDS, USER_INPUT)
@@ -212,7 +187,7 @@ def run_test():
         # Non-ASCII left literal, also matching kotlinx
         assert "café" in fields["userInput"], fields["userInput"]
 
-    check("fields are compact JSON strings that round-trip", case_6)
+    check("fields are compact JSON strings that round-trip", case_4)
 
     # ------------------------------------------------------------------
     # is_complete
@@ -228,65 +203,43 @@ def run_test():
         cp = _make_checkpointer(dao)
         return cp.is_complete(step_id), dao
 
-    print("\n[7] Recorded success")
+    print("\n[5] Recorded success")
     check(
         "stored success returns True",
         lambda: _assert(is_complete_case("TESTING", {"s": SUCCESS})[0] is True),
     )
 
-    print("\n[8] Recorded failure")
+    print("\n[6] Recorded failure")
     check(
         "stored failure returns False",
         lambda: _assert(is_complete_case("TESTING", {"s": FAILED})[0] is False),
     )
 
-    print("\n[9] Step absent from an existing document (pending)")
+    print("\n[7] Step absent from an existing document (pending)")
     check(
         "pending step returns False",
         lambda: _assert(is_complete_case("TESTING", {"other": SUCCESS})[0] is False),
     )
 
-    print("\n[10] Checkpoint document missing entirely")
+    print("\n[8] Checkpoint document missing entirely")
     check(
         "missing document returns False",
         lambda: _assert(is_complete_case("TESTING", {})[0] is False),
     )
 
-    print("\n[11] Non-TESTING project with a success entry present")
-
-    def case_11():
-        result, dao = is_complete_case("LIVE", {"s": SUCCESS})
-        assert result is False, result
-        assert dao.get_checkpoint_calls == 0, (
-            f"TESTING gate did not short-circuit: {dao.get_checkpoint_calls} read(s)"
-        )
-
-    check("non-TESTING returns False without reading the checkpoint", case_11)
-
-    print("\n[12] Project not found")
-
-    def case_12():
-        dao = FakeDao(None, checkpoint_doc={"s": SUCCESS})
-        cp = _make_checkpointer(dao)
-        result = cp.is_complete("s")  # must not raise
-        assert result is False, result
-        assert dao.get_checkpoint_calls == 0, "read the checkpoint before swallowing"
-
-    check("missing project is swallowed and treated as not complete", case_12)
-
-    print("\n[13] Stored value is not valid JSON")
+    print("\n[9] Stored value is not valid JSON")
     check(
         "malformed stored JSON returns False without raising",
         lambda: _assert(is_complete_case("TESTING", {"s": "not-json"})[0] is False),
     )
 
-    print("\n[14] Stored value is a map rather than a JSON string")
+    print("\n[10] Stored value is a map rather than a JSON string")
     check(
         "non-string entry returns False (mirrors Kotlin `as? String`)",
         lambda: _assert(is_complete_case("TESTING", {"s": {"status": "success"}})[0] is False),
     )
 
-    print("\n[15] TestAndFixFlow 'fixing' marker")
+    print("\n[11] TestAndFixFlow 'fixing' marker")
     check(
         "status=fixing returns False",
         lambda: _assert(
@@ -294,7 +247,7 @@ def run_test():
         ),
     )
 
-    print("\n[16] Legacy entry carrying extra keys")
+    print("\n[12] Legacy entry carrying extra keys")
     check(
         "extra keys do not break parsing (regression: StepCheckpoint.from_dict)",
         lambda: _assert(
@@ -309,7 +262,7 @@ def run_test():
         ),
     )
 
-    print("\n[17] Entry with no 'error' key (BuildTestFlow / markCheckpointFixing shape)")
+    print("\n[13] Entry with no 'error' key (BuildTestFlow / markCheckpointFixing shape)")
     check(
         "missing error key does not raise TypeError",
         lambda: _assert(
@@ -317,27 +270,27 @@ def run_test():
         ),
     )
 
-    print("\n[18] Read is projected to the single step field")
+    print("\n[14] Read is projected to the single step field")
 
-    def case_18():
+    def case_14():
         _, dao = is_complete_case("TESTING", {"s": SUCCESS})
         assert dao.last_get_fields == ["s"], (
             f"expected a projection of ['s'], got {dao.last_get_fields!r} — "
             "a full-document read re-downloads the accumulating step_context"
         )
 
-    check("get_checkpoint is called with fields=[step_id]", case_18)
+    check("get_checkpoint is called with fields=[step_id]", case_14)
 
-    print("\n[19] Empty step id")
+    print("\n[15] Empty step id")
 
-    def case_19():
+    def case_15():
         result, dao = is_complete_case("TESTING", {"s": SUCCESS}, step_id="")
         assert result is False, result
         assert dao.get_checkpoint_calls == 0, "empty step_id should short-circuit"
 
-    check("empty step_id returns False without a read", case_19)
+    check("empty step_id returns False without a read", case_15)
 
-    print("\n[20] Step id containing a dot")
+    print("\n[16] Step id containing a dot")
     check(
         "dotted step id is treated as a literal key",
         lambda: _assert(

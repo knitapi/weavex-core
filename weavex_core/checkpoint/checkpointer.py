@@ -5,10 +5,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from ..dao import get_dao
-from ..errors import ProjectNotFoundError
 from .events import get_event_publisher
-
-_TESTING_STATUS = "TESTING"
 
 # Bumped whenever the published event body changes shape. The subscriber reads
 # it off both the body ("version") and the message attributes ("schemaVersion").
@@ -48,12 +45,14 @@ class WorkflowCheckpointer:
     to Pub/Sub, because the server-side work they trigger — mutating the project
     document and starting the fix workflow — does not belong in a client library.
     The weavex backend subscribes and performs it.
+
+    Checkpoints are recorded for every project unconditionally — there is no
+    TESTING-only gate.
     """
 
     def __init__(self, project_id: str, context: dict):
         self.project_id = project_id
         self.execution_id = context.get("execution_id")
-        self.org_id = context.get("org_id") or context.get("account_id")
 
         self._dao = None
         try:
@@ -75,30 +74,17 @@ class WorkflowCheckpointer:
         print(
             f"[weavex-core] checkpointer error in {where} | project={self.project_id} "
             f"execution={self.execution_id} | {type(exc).__name__}: {exc}",
-            file=sys.stderr,
             flush=True,
         )
-
-    def _is_testing(self) -> bool:
-        """
-        Mirrors the server-side gate: checkpointing is only active while a project
-        is in TESTING. Raises if the project does not exist at all; callers catch
-        this the same as any other error.
-        """
-        status = self._dao.get_project_status(self.project_id, self.org_id)
-        if status is None:
-            raise ProjectNotFoundError(f"Project not found: {self.project_id}")
-        return status == _TESTING_STATUS
 
     def is_complete(self, step_id: str) -> bool:
         """
         True only when a previous attempt recorded this step as successful.
 
-        Mirrors POST /checkpoint.get: a project outside TESTING has no checkpoint
-        state at all, a step with no recorded entry is "pending", and any status
-        other than "success" (e.g. "failed", or the "fixing" marker written by
-        TestAndFixFlow) means not complete. Any error, including a missing
-        project, is logged and treated as "not complete" rather than raised.
+        A step with no recorded entry is "pending", and any status other than
+        "success" (e.g. "failed", or the "fixing" marker written by
+        TestAndFixFlow) means not complete. Any error is logged and treated as
+        "not complete" rather than raised.
 
         Reads `status` off the parsed object rather than building a StepCheckpoint:
         several Kotlin writers emit entries with no `error` key (BuildTestFlow's
@@ -109,9 +95,6 @@ class WorkflowCheckpointer:
             return False
 
         try:
-            if not self._is_testing():
-                return False
-
             doc = self._dao.get_checkpoint(
                 self.project_id, self.execution_id, fields=[step_id]
             )
@@ -139,9 +122,6 @@ class WorkflowCheckpointer:
         user_input: dict,
     ) -> dict:
         try:
-            if not self._is_testing():
-                return {}
-
             fields = {
                 "context": _compact_json(context),
                 "integrationIds": _compact_json(integration_ids),
@@ -225,9 +205,6 @@ class WorkflowCheckpointer:
         step_context: dict,
     ) -> None:
         try:
-            if not self._is_testing():
-                return
-
             cp = StepCheckpoint(step_id=step_id, status="success", error=None)
 
             self._emit(
@@ -259,9 +236,6 @@ class WorkflowCheckpointer:
                 error_dict = {"error_type": "unknown", "raw_error": error_json}
             cp = StepCheckpoint(step_id=step_id, status="failed", error=error_dict)
 
-            if not self._is_testing():
-                return
-
             # stepContext omitted entirely on failure, matching the previous HTTP
             # payload and the Kotlin DTO's `stepContext: JsonElement? = null`.
             self._emit(
@@ -273,9 +247,6 @@ class WorkflowCheckpointer:
     def clear(self) -> None:
         """Call after full workflow success so the next fresh run starts clean."""
         try:
-            if not self._is_testing():
-                return
-
             self._emit("checkpoint.clear", {})
         except Exception as e:
             self._log_error("clear", e)
