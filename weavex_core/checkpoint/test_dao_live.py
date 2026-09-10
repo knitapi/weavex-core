@@ -21,16 +21,11 @@ from google.cloud.firestore_v1.field_path import FieldPath
 
 from weavex_core.checkpoint import WorkflowCheckpointer
 from weavex_core.dao import CHECKPOINTS_COLLECTION, PROJECTS_COLLECTION, get_dao
-from weavex_core.weavex_api_service import WeavexAPIService
 
 # --- configure these -------------------------------------------------------
 TESTING_PROJECT_ID = ""
 TESTING_ORG_ID = ""
 NON_TESTING_PROJECT_ID = None
-
-# Only needed for the optional HTTP-vs-DAO parity check [9].
-KNIT_API_KEY = ""
-RUN_HTTP_PARITY = False
 # ---------------------------------------------------------------------------
 
 CONTEXT_PAYLOAD = {"knit_api_key": "verify-key", "region": "eu", "nested": {"a": [1, 2]}}
@@ -57,7 +52,7 @@ def _context(execution_id: str) -> dict:
     return {
         "execution_id": execution_id,
         "org_id": TESTING_ORG_ID,
-        "knit_api_key": KNIT_API_KEY or "verify-key",
+        "knit_api_key": "verify-key",
     }
 
 
@@ -304,86 +299,9 @@ def run_test():
 
         check("all sampled project docs expose a top-level status", case_7)
 
-        # 8. HTTP-vs-DAO parity (optional)
-        print("\n[8] HTTP vs DAO parity")
-
-        if RUN_HTTP_PARITY and KNIT_API_KEY:
-            def case_8():
-                http_exec = f"dao-verify-http-{int(time.time())}"
-                api = WeavexAPIService(_context(http_exec))
-                http_result = api.init_checkpoint(
-                    TESTING_PROJECT_ID, http_exec, INTEGRATION_IDS, USER_INPUT, CONTEXT_PAYLOAD
-                )
-
-                dao_exec = f"dao-verify-dao-{int(time.time())}"
-                cp = WorkflowCheckpointer(TESTING_PROJECT_ID, _context(dao_exec))
-                dao_result = cp.init(CONTEXT_PAYLOAD, INTEGRATION_IDS, USER_INPUT)
-
-                http_ref = db.collection(CHECKPOINTS_COLLECTION).document(
-                    f"{TESTING_PROJECT_ID}:{http_exec}"
-                )
-                dao_ref = db.collection(CHECKPOINTS_COLLECTION).document(
-                    f"{TESTING_PROJECT_ID}:{dao_exec}"
-                )
-                http_doc = http_ref.get().to_dict() or {}
-                dao_doc = dao_ref.get().to_dict() or {}
-
-                try:
-                    assert http_result == dao_result, f"responses differ:\n  http={http_result}\n  dao={dao_result}"
-                    assert http_doc.keys() == dao_doc.keys(), f"{http_doc.keys()} vs {dao_doc.keys()}"
-                    for key in http_doc:
-                        assert json.loads(http_doc[key]) == json.loads(dao_doc[key]), (
-                            f"{key} differs semantically:\n  http={http_doc[key]}\n  dao={dao_doc[key]}"
-                        )
-                        if http_doc[key] != dao_doc[key]:
-                            print(f"    NOTE: {key} differs byte-wise but not semantically")
-                finally:
-                    http_ref.delete()
-                    dao_ref.delete()
-
-            check("HTTP and DAO paths produce equivalent docs and responses", case_8)
-
-            # 8a. is_complete parity, step by step, against the seeded document
-            def case_8a():
-                api = WeavexAPIService(_context(execution_id))
-                cp = WorkflowCheckpointer(TESTING_PROJECT_ID, _context(execution_id))
-
-                def http_is_complete(step_id):
-                    data = api.get_result_checkpoint(TESTING_PROJECT_ID, execution_id, step_id)
-                    if not data:
-                        return False
-                    return data.get("status") == "success"
-
-                # verify_malformed is excluded on purpose: the server's
-                # parseToJsonElement throws and CheckpointRoutes rethrows, so the
-                # HTTP path 500s where the DAO path returns False. That divergence
-                # is intended — do not "fix" it by making the DAO raise.
-                comparable = [s for s in SEEDED_STEPS if s != "verify_malformed"]
-                comparable += ["verify_not_a_string", "verify_never_written"]
-
-                mismatches = {}
-                for step in comparable:
-                    http_answer = http_is_complete(step)
-                    dao_answer = cp.is_complete(step)
-                    if http_answer != dao_answer:
-                        mismatches[step] = (http_answer, dao_answer)
-                assert not mismatches, f"http vs dao disagree: {mismatches}"
-
-                # And assert the documented divergence actually holds.
-                assert cp.is_complete("verify_malformed") is False
-                try:
-                    http_is_complete("verify_malformed")
-                    print("    NOTE: server tolerated the malformed entry; DAO returns False either way")
-                except Exception as e:
-                    print(f"    expected divergence on malformed entry: HTTP raised {type(e).__name__}")
-
-            check("HTTP and DAO agree on is_complete for every seeded step", case_8a)
-        else:
-            print("    SKIPPED: set RUN_HTTP_PARITY=True and KNIT_API_KEY to run this check")
-
     finally:
-        # 9. Clean up the throwaway document
-        print("\n[9] Cleanup")
+        # 8. Clean up the throwaway document
+        print("\n[8] Cleanup")
         try:
             doc_ref.delete()
             print(f"    deleted {doc_id}")

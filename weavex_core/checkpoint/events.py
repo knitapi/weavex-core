@@ -19,7 +19,7 @@ _FLUSH_TIMEOUT = float(os.environ.get("WEAVEX_PUBSUB_FLUSH_TIMEOUT", "5"))
 
 
 def _log(message: str) -> None:
-    # stderr, matching weavex_api_service.py and logging_utils/transports.py.
+    # stderr, matching logging_utils/transports.py.
     # Deliberately NOT get_logger(): BaseLogger.__init__ installs a signal
     # handler, which raises ValueError off the main thread, and
     # WorkflowCheckpointer is constructed inside asyncio.to_thread and inside a

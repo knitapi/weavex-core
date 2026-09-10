@@ -33,9 +33,6 @@ from .checkpoint import (
     PubSubEventPublisher,
 )
 
-# 8. Expose Weavex API Service
-from .weavex_api_service import WeavexAPIService
-
 # Expose Knit SDKs
 from . import knit_consumer
 from . import knit_mail
@@ -60,7 +57,6 @@ __all__ = [
     "ProjectNotFoundError",
     "StepCheckpoint",
     "WorkflowCheckpointer",
-    "WeavexAPIService",
     "get_dao",
     "WeavexDao",
     "FirestoreDb",
