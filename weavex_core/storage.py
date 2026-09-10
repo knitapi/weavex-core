@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from typing import Any
@@ -62,6 +63,7 @@ class GCSObjectStore(ObjectStore):
     def __init__(self):
         # Get the base bucket name
         base_bucket = os.environ.get("BUCKET_NAME", "weavex-flow-storage")
+        reports_bucket = os.environ.get("REPORTS_BUCKET_NAME", "weavex-reports")
 
         # Get the region setting
         region = os.getenv("WEAVEX_SERVICE_REGION", "eu").lower()
@@ -69,12 +71,15 @@ class GCSObjectStore(ObjectStore):
         # Apply suffix logic
         if region == "eu":
             self.bucket_name = f"{base_bucket}-eu"
+            self.reports_bucket_name = f"{reports_bucket}-eu"
         else:
             self.bucket_name = base_bucket
+            self.reports_bucket_name = reports_bucket
 
-        # Initialize GCS client and bucket reference
+        # Initialize GCS client and bucket references
         self.storage_client = storage.Client()
         self.bucket = self.storage_client.bucket(self.bucket_name)
+        self.reports_bucket = self.storage_client.bucket(self.reports_bucket_name)
 
     def upload_json(self, project_id: str, sync_id: str, key: str, data: Any) -> str:
         # Construct path using project_id and sync_id
@@ -171,6 +176,19 @@ class GCSObjectStore(ObjectStore):
         blob.upload_from_string(
             file_content, content_type=self._REPORT_CONTENT_TYPES[extension]
         )
+
+        try:
+            reports_blob = self.reports_bucket.blob(full_path)
+            reports_blob.upload_from_string(
+                file_content, content_type=self._REPORT_CONTENT_TYPES[extension]
+            )
+        except Exception:
+            logging.warning(
+                "Failed to upload report copy to reports bucket %s/%s",
+                self.reports_bucket_name,
+                full_path,
+                exc_info=True,
+            )
 
         return f"gs://{self.bucket_name}/{full_path}"
 

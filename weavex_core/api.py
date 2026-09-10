@@ -2,6 +2,7 @@ import json
 import requests
 from dataclasses import dataclass
 from typing import Optional, Any, Dict
+from .execute_api import ApiResponse
 
 @dataclass
 class VendorResponse:
@@ -117,3 +118,29 @@ def make_passthrough_call(
         final_body = resp.text
 
     return VendorResponse(actual_resp=resp.content, status_code=final_status, body=final_body, headers=final_headers)
+
+def make_passthrough_call_normalised(
+        context: dict,
+        integration_id: str,
+        method: str,
+        path: str,
+        body: Optional[dict] = None,
+        content_type: str = None,
+        headers: Optional[dict] = None,
+        app_base_url: str = None
+) -> ApiResponse:
+    result = make_passthrough_call(
+        context        = context,
+        integration_id = integration_id,
+        method         = method,
+        path           = path,
+        body           = body,
+        content_type   = content_type,
+        headers        = headers,
+        app_base_url   = app_base_url,
+    )
+    return ApiResponse(
+        status_code = result.status_code,
+        body        = result.body,
+        headers     = result.headers,
+    )
