@@ -19,12 +19,21 @@ from .execute_api import execute_api
 from .execute_dw import execute_dw_query, execute_dw_write, DWQueryResult, DWWriteResult
 from .llm import complete, complete_one_shot, LLMResponse
 # 5. Expose Structured Error
-from .errors import WeavexError
+from .errors import WeavexError, ProjectNotFoundError
 
-# 6. Expose Checkpoint
-from .checkpoint import StepCheckpoint, WorkflowCheckpointer
+# 6. Expose App DB DAO
+from .dao import get_dao, WeavexDao, FirestoreDb
 
-# 7. Expose Weavex API Service
+# 7. Expose Checkpointing (checkpointer + its event publisher)
+from .checkpoint import (
+    StepCheckpoint,
+    WorkflowCheckpointer,
+    get_event_publisher,
+    EventPublisher,
+    PubSubEventPublisher,
+)
+
+# 8. Expose Weavex API Service
 from .weavex_api_service import WeavexAPIService
 
 # Expose Knit SDKs
@@ -48,9 +57,16 @@ __all__ = [
     "complete_one_shot",
     "LLMResponse",
     "WeavexError",
+    "ProjectNotFoundError",
     "StepCheckpoint",
     "WorkflowCheckpointer",
     "WeavexAPIService",
+    "get_dao",
+    "WeavexDao",
+    "FirestoreDb",
+    "get_event_publisher",
+    "EventPublisher",
+    "PubSubEventPublisher",
     "knit_consumer",
     "knit_mail",
     "knit_sync",
