@@ -26,7 +26,7 @@ class FirestoreDb(WeavexDao):
     """Google Cloud Firestore implementation of WeavexDao."""
 
     def __init__(self, database: Optional[str] = None, project: Optional[str] = None):
-        db_name = database or os.environ.get("WEAVEX_FIRESTORE_DATABASE", _DEFAULT_DATABASE)
+        db_name = database or os.environ.get("APP_DB_NAME", _DEFAULT_DATABASE)
 
         # None => infer the GCP project from ADC, same as the Kotlin client and as
         # workflow-runner's own firestore.Client(database=...) calls.

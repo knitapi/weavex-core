@@ -24,7 +24,6 @@ from weavex_core.checkpoint import (
 )
 from weavex_core.checkpoint import checkpointer as checkpoint_module
 from weavex_core.checkpoint.test_dao import FakeDao
-from weavex_core.errors import ProjectNotFoundError
 
 
 class FakeEventPublisher(EventPublisher):
@@ -175,14 +174,10 @@ def run_test():
     def case_3():
         pub = FakeEventPublisher()
         cp = _make_checkpointer(FakeDao(None), pub)
-        try:
-            cp.success("fetch_employees", STEP_CONTEXT)
-        except ProjectNotFoundError:
-            assert pub.messages == [], pub.messages
-            return
-        raise AssertionError("expected ProjectNotFoundError")
+        cp.success("fetch_employees", STEP_CONTEXT)  # must not raise
+        assert pub.messages == [], pub.messages
 
-    check("missing project raises and publishes nothing (parity: set 404s)", case_3)
+    check("missing project is swallowed, publishes nothing", case_3)
 
     # ------------------------------------------------------------------
     # fail
@@ -421,6 +416,37 @@ def run_test():
         )
 
     check("a failed future triggers resume_publish and clears _pending", case_19)
+
+    # ------------------------------------------------------------------
+    # WorkflowCheckpointer construction
+    # ------------------------------------------------------------------
+    print("\n[20] Construction never raises even if the event publisher can't be built")
+
+    def case_20():
+        original_dao = checkpoint_module.get_dao
+        original_pub = checkpoint_module.get_event_publisher
+        dao = FakeDao("TESTING")
+        checkpoint_module.get_dao = lambda: dao
+
+        def boom():
+            raise ValueError("Cannot resolve a GCP project for Pub/Sub")
+
+        checkpoint_module.get_event_publisher = boom
+        try:
+            cp = WorkflowCheckpointer(
+                "proj_test",
+                {"execution_id": "exec_test", "org_id": "org_test"},
+            )
+            assert cp._events is None, cp._events
+            cp.success("fetch_employees", {})  # must not raise
+        finally:
+            checkpoint_module.get_dao = original_dao
+            checkpoint_module.get_event_publisher = original_pub
+
+    check(
+        "a failing get_event_publisher() is logged, not raised, and later calls still don't raise",
+        case_20,
+    )
 
     print("\n--- Summary ---")
     if failures:

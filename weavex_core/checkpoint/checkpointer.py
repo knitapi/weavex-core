@@ -54,14 +54,36 @@ class WorkflowCheckpointer:
         self.project_id = project_id
         self.execution_id = context.get("execution_id")
         self.org_id = context.get("org_id") or context.get("account_id")
-        self._dao = get_dao()
-        self._events = get_event_publisher()
+
+        self._dao = None
+        try:
+            self._dao = get_dao()
+        except Exception as e:
+            self._log_error("__init__ (dao)", e)
+
+        self._events = None
+        try:
+            self._events = get_event_publisher()
+        except Exception as e:
+            self._log_error("__init__ (event publisher)", e)
+
+    def _log_error(self, where: str, exc: Exception) -> None:
+        """
+        Checkpointing must never fail an otherwise-healthy workflow step. Every
+        public entry point catches everything and logs here instead of raising.
+        """
+        print(
+            f"[weavex-core] checkpointer error in {where} | project={self.project_id} "
+            f"execution={self.execution_id} | {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     def _is_testing(self) -> bool:
         """
         Mirrors the server-side gate: checkpointing is only active while a project
-        is in TESTING. Raises if the project does not exist at all, preserving the
-        previous 404 from /checkpoint.init.
+        is in TESTING. Raises if the project does not exist at all; callers catch
+        this the same as any other error.
         """
         status = self._dao.get_project_status(self.project_id, self.org_id)
         if status is None:
@@ -75,8 +97,8 @@ class WorkflowCheckpointer:
         Mirrors POST /checkpoint.get: a project outside TESTING has no checkpoint
         state at all, a step with no recorded entry is "pending", and any status
         other than "success" (e.g. "failed", or the "fixing" marker written by
-        TestAndFixFlow) means not complete. A missing project raises, preserving
-        the route's 404.
+        TestAndFixFlow) means not complete. Any error, including a missing
+        project, is logged and treated as "not complete" rather than raised.
 
         Reads `status` off the parsed object rather than building a StepCheckpoint:
         several Kotlin writers emit entries with no `error` key (BuildTestFlow's
@@ -86,25 +108,29 @@ class WorkflowCheckpointer:
         if not step_id:
             return False
 
-        if not self._is_testing():
-            return False
-
-        doc = self._dao.get_checkpoint(
-            self.project_id, self.execution_id, fields=[step_id]
-        )
-
-        raw = doc.get(step_id)
-        if not isinstance(raw, str):
-            # Absent, or stored as a non-string. Kotlin's `doc[stepId] as? String`
-            # yields null for both, which the route reports as "pending".
-            return False
-
         try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError:
-            return False
+            if not self._is_testing():
+                return False
 
-        return isinstance(parsed, dict) and parsed.get("status") == "success"
+            doc = self._dao.get_checkpoint(
+                self.project_id, self.execution_id, fields=[step_id]
+            )
+
+            raw = doc.get(step_id)
+            if not isinstance(raw, str):
+                # Absent, or stored as a non-string. Kotlin's `doc[stepId] as? String`
+                # yields null for both, which the route reports as "pending".
+                return False
+
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                return False
+
+            return isinstance(parsed, dict) and parsed.get("status") == "success"
+        except Exception as e:
+            self._log_error("is_complete", e)
+            return False
 
     def init(
         self,
@@ -112,28 +138,32 @@ class WorkflowCheckpointer:
         integration_ids: list,
         user_input: dict,
     ) -> dict:
-        if not self._is_testing():
+        try:
+            if not self._is_testing():
+                return {}
+
+            fields = {
+                "context": _compact_json(context),
+                "integrationIds": _compact_json(integration_ids),
+                "userInput": _compact_json(user_input),
+            }
+
+            was_new, existing = self._dao.init_checkpoint(
+                self.project_id, self.execution_id, fields
+            )
+
+            step_context_str = existing.get("step_context")
+            step_context: Dict[str, Any] = {}
+            if isinstance(step_context_str, str):
+                try:
+                    step_context = json.loads(step_context_str)
+                except json.JSONDecodeError:
+                    step_context = {}
+
+            return {"init": was_new, "step_context": step_context}
+        except Exception as e:
+            self._log_error("init", e)
             return {}
-
-        fields = {
-            "context": _compact_json(context),
-            "integrationIds": _compact_json(integration_ids),
-            "userInput": _compact_json(user_input),
-        }
-
-        was_new, existing = self._dao.init_checkpoint(
-            self.project_id, self.execution_id, fields
-        )
-
-        step_context_str = existing.get("step_context")
-        step_context: Dict[str, Any] = {}
-        if isinstance(step_context_str, str):
-            try:
-                step_context = json.loads(step_context_str)
-            except json.JSONDecodeError:
-                step_context = {}
-
-        return {"init": was_new, "step_context": step_context}
 
     def _emit(self, event_type: str, body: Dict[str, Any]) -> None:
         """
@@ -187,32 +217,29 @@ class WorkflowCheckpointer:
                 attributes=attributes,
             )
         except Exception as e:
-            print(
-                f"[weavex-core] checkpoint event NOT published | type={event_type} "
-                f"project={self.project_id} execution={self.execution_id} "
-                f"| {type(e).__name__}: {e}",
-                file=sys.stderr,
-                flush=True,
-            )
+            self._log_error(f"_emit ({event_type})", e)
 
     def success(
         self,
         step_id: str,
         step_context: dict,
     ) -> None:
-        if not self._is_testing():
-            return
+        try:
+            if not self._is_testing():
+                return
 
-        cp = StepCheckpoint(step_id=step_id, status="success", error=None)
+            cp = StepCheckpoint(step_id=step_id, status="success", error=None)
 
-        self._emit(
-            "checkpoint.set",
-            {
-                "stepId": step_id,
-                "checkpoint": cp.to_dict(),
-                "stepContext": step_context,
-            },
-        )
+            self._emit(
+                "checkpoint.set",
+                {
+                    "stepId": step_id,
+                    "checkpoint": cp.to_dict(),
+                    "stepContext": step_context,
+                },
+            )
+        except Exception as e:
+            self._log_error("success", e)
 
     def fail(
         self,
@@ -226,36 +253,29 @@ class WorkflowCheckpointer:
         the fix agent would be handed the wrong error.
         """
         try:
-            error_dict = json.loads(error_json)
-        except (json.JSONDecodeError, TypeError):
-            error_dict = {"error_type": "unknown", "raw_error": error_json}
-        cp = StepCheckpoint(step_id=step_id, status="failed", error=error_dict)
+            try:
+                error_dict = json.loads(error_json)
+            except (json.JSONDecodeError, TypeError):
+                error_dict = {"error_type": "unknown", "raw_error": error_json}
+            cp = StepCheckpoint(step_id=step_id, status="failed", error=error_dict)
 
-        try:
             if not self._is_testing():
                 return
-        except Exception as e:
-            print(
-                f"[weavex-core] checkpoint.fail could not read project status; step "
-                f"failure not recorded | project={self.project_id} "
-                f"| {type(e).__name__}: {e}",
-                file=sys.stderr,
-                flush=True,
-            )
-            return
 
-        # stepContext omitted entirely on failure, matching the previous HTTP
-        # payload and the Kotlin DTO's `stepContext: JsonElement? = null`.
-        self._emit("checkpoint.set", {"stepId": step_id, "checkpoint": cp.to_dict()})
+            # stepContext omitted entirely on failure, matching the previous HTTP
+            # payload and the Kotlin DTO's `stepContext: JsonElement? = null`.
+            self._emit(
+                "checkpoint.set", {"stepId": step_id, "checkpoint": cp.to_dict()}
+            )
+        except Exception as e:
+            self._log_error("fail", e)
 
     def clear(self) -> None:
         """Call after full workflow success so the next fresh run starts clean."""
         try:
             if not self._is_testing():
                 return
-        except ProjectNotFoundError:
-            # Parity with POST /checkpoint.clear, which returns 200 for a missing
-            # project — unlike /checkpoint.set, which 404s.
-            return
 
-        self._emit("checkpoint.clear", {})
+            self._emit("checkpoint.clear", {})
+        except Exception as e:
+            self._log_error("clear", e)

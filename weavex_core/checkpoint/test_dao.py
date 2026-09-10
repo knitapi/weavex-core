@@ -15,7 +15,6 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 from weavex_core.checkpoint import EventPublisher, WorkflowCheckpointer
 from weavex_core.checkpoint import checkpointer as checkpoint_module
 from weavex_core.dao import WeavexDao
-from weavex_core.errors import ProjectNotFoundError
 
 
 class FakeDao(WeavexDao):
@@ -168,19 +167,17 @@ def run_test():
 
     check("non-TESTING returns {} and never writes", case_3)
 
-    # 4. Missing project raises
+    # 4. Missing project is swallowed
     print("\n[4] Project not found")
 
     def case_4():
         dao = FakeDao(None)
         cp = _make_checkpointer(dao)
-        try:
-            cp.init(CONTEXT, INTEGRATION_IDS, USER_INPUT)
-        except ProjectNotFoundError:
-            return
-        raise AssertionError("expected ProjectNotFoundError")
+        result = cp.init(CONTEXT, INTEGRATION_IDS, USER_INPUT)  # must not raise
+        assert result == {}, result
+        assert dao.init_calls == 0, f"init_checkpoint called {dao.init_calls} times"
 
-    check("missing project raises ProjectNotFoundError", case_4)
+    check("missing project is swallowed and returns {}", case_4)
 
     # 5. Corrupt step_context degrades to {} rather than raising
     print("\n[5] Malformed step_context")
@@ -271,14 +268,11 @@ def run_test():
     def case_12():
         dao = FakeDao(None, checkpoint_doc={"s": SUCCESS})
         cp = _make_checkpointer(dao)
-        try:
-            cp.is_complete("s")
-        except ProjectNotFoundError:
-            assert dao.get_checkpoint_calls == 0, "read the checkpoint before raising"
-            return
-        raise AssertionError("expected ProjectNotFoundError")
+        result = cp.is_complete("s")  # must not raise
+        assert result is False, result
+        assert dao.get_checkpoint_calls == 0, "read the checkpoint before swallowing"
 
-    check("missing project raises before reading the checkpoint", case_12)
+    check("missing project is swallowed and treated as not complete", case_12)
 
     print("\n[13] Stored value is not valid JSON")
     check(

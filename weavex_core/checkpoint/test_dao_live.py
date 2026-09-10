@@ -21,7 +21,6 @@ from google.cloud.firestore_v1.field_path import FieldPath
 
 from weavex_core.checkpoint import WorkflowCheckpointer
 from weavex_core.dao import CHECKPOINTS_COLLECTION, PROJECTS_COLLECTION, get_dao
-from weavex_core.errors import ProjectNotFoundError
 from weavex_core.weavex_api_service import WeavexAPIService
 
 # --- configure these -------------------------------------------------------
@@ -269,13 +268,10 @@ def run_test():
 
         def case_5f():
             cp = WorkflowCheckpointer("does-not-exist-dao-verify", _context(execution_id))
-            try:
-                cp.is_complete("s")
-            except ProjectNotFoundError:
-                return
-            raise AssertionError("expected ProjectNotFoundError")
+            result = cp.is_complete("s")  # must not raise
+            assert result is False, result
 
-        check("missing project raises ProjectNotFoundError", case_5f)
+        check("missing project is swallowed and treated as not complete", case_5f)
 
         # 6. Non-TESTING project short-circuits and writes nothing
         print("\n[6] Non-TESTING project")
