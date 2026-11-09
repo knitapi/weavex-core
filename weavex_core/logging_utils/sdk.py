@@ -36,6 +36,18 @@ class WeavexServicesLogger:
             # Fallback to standard output for local development
             self.logger = StdoutLogger(self.project_id)
 
+    # Max allowed size (in bytes) for a single payload field before it gets
+    # replaced with a placeholder message instead of being logged in full.
+    MAX_PAYLOAD_BYTES = 9999599
+
+    @staticmethod
+    def _safe_payload_json(value: Dict[str, Any]) -> str:
+        serialized = json.dumps(value or {})
+        size_bytes = len(serialized.encode("utf-8"))
+        if size_bytes > WeavexServicesLogger.MAX_PAYLOAD_BYTES:
+            return json.dumps({"message": "Size is too large"})
+        return serialized
+
     def log_api_traffic(self,
                         log_type: str,
                         method: str,
@@ -58,10 +70,10 @@ class WeavexServicesLogger:
             "status_code": int(status_code),
             "duration_ms": int(duration_ms),
             # Stringify JSON fields for BQ ingestion compatibility
-            "request_payload": json.dumps(req_payload or {}),
-            "response_payload": json.dumps(resp_payload or {}),
+            "request_payload": self._safe_payload_json(req_payload),
+            "response_payload": self._safe_payload_json(resp_payload),
             "vendor_name": vendor_name,
-            "api_data": json.dumps(metadata or {}),
+            "api_data": self._safe_payload_json(metadata),
             "context": json.dumps(context or {})
         }
         self.logger.log(payload, blocking=True)
